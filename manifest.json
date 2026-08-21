@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "SentinelEdge v1.2",
+  "version": "1.2.0",
+  "description": "Real-Time Client-Side DLP Firewall Chrome & Firefox Extension",
+  "permissions": [
+    "clipboardRead",
+    "activeTab"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sentineledge@local.extension",
+      "strict_min_version": "109.0"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "src/content/index.ts"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
