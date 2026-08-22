@@ -11,18 +11,18 @@ console.log("\n==================================================");
 console.log("   SentinelEdge Gemini Nano AI / Regex Handshake Tests");
 console.log("==================================================\n");
 
-// Mock Chrome Prompt API for Node test environment to simulate Gemini Nano V8 token extraction
+// Mock Chrome Prompt API for Node test environment to simulate Gemini Nano V8 JSON token extraction
 (globalThis as any).window = {
   ai: {
     languageModel: {
       capabilities: async () => ({ available: 'readily' }),
       create: async () => ({
         prompt: async (text: string) => {
-          if (text.includes("blueDolphin#9921")) return "blueDolphin#9921";
-          if (text.includes("AlphaOmegaTest99")) return "AlphaOmegaTest99";
-          if (text.includes("admin123")) return "admin123";
-          if (text.includes("my_top_secret_code")) return "my_top_secret_code";
-          return "NONE";
+          if (text.includes("blueDolphin#9921")) return JSON.stringify({ found: true, secret: "blueDolphin#9921" });
+          if (text.includes("AlphaOmegaTest99")) return JSON.stringify({ found: true, secret: "AlphaOmegaTest99" });
+          if (text.includes("admin123")) return JSON.stringify({ found: true, secret: "admin123" });
+          if (text.includes("my_top_secret_code")) return JSON.stringify({ found: true, secret: "my_top_secret_code" });
+          return JSON.stringify({ found: false, secret: "" });
         }
       })
     }

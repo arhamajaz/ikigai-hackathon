@@ -43,6 +43,16 @@ export interface LanguageModelSession {
 let activeAiSession: LanguageModelSession | null = null;
 let isInitializing = false;
 
+const SEMANTIC_SYSTEM_PROMPT = `
+You are an on-device Data Loss Prevention (DLP) engine.
+Analyze the user's text for sensitive secrets disclosed in natural language context (e.g., passphrases, bypass tokens, override codes, passwords, private keys).
+
+Rules:
+1. If a contextual secret is present, output ONLY a JSON object: {"found": true, "secret": "<EXACT_SECRET_SUBSTRING>"}
+2. If NO secret is present, output ONLY: {"found": false, "secret": ""}
+3. Do not include explanation, markdown formatting, or preamble.
+`.trim();
+
 /**
  * Lightweight in-memory LRU secret cache for 0.1ms instant pre-flight lookup.
  */
@@ -85,7 +95,7 @@ export async function checkGeminiNanoAvailability(): Promise<boolean> {
 
 /**
  * Stateful Session Creation (.create)
- * Bootstraps a single persistent Gemini Nano session with a constrained DLP extraction system prompt.
+ * Bootstraps a single persistent Gemini Nano session with structured JSON system prompt.
  */
 export async function getOrCreateAiSession(): Promise<LanguageModelSession | null> {
   if (activeAiSession) return activeAiSession;
@@ -100,7 +110,7 @@ export async function getOrCreateAiSession(): Promise<LanguageModelSession | nul
     }
 
     activeAiSession = await aiObj.languageModel.create({
-      systemPrompt: "You are an AI Data Loss Prevention agent. Identify any sensitive password, override code, secret key, passcode, or backdoor token in the user text. Reply ONLY with the extracted secret token(s) separated by commas. If no sensitive secret is found, reply NONE."
+      systemPrompt: SEMANTIC_SYSTEM_PROMPT
     });
 
     isInitializing = false;
@@ -113,7 +123,7 @@ export async function getOrCreateAiSession(): Promise<LanguageModelSession | nul
 
 /**
  * Local Semantic Scanning (.prompt)
- * Evaluates text using on-device Gemini Nano with 0 cloud network calls.
+ * Evaluates text using on-device Gemini Nano with 0 cloud network calls and structured JSON parsing.
  */
 export async function scanSemanticSecrets(text: string): Promise<SemanticScanResult> {
   if (!text || text.trim().length < 5) {
@@ -127,24 +137,21 @@ export async function scanSemanticSecrets(text: string): Promise<SemanticScanRes
 
   try {
     const rawResponse = await session.prompt(text);
-    const cleanedResponse = rawResponse.trim();
+    const cleanedResponse = rawResponse.trim().replace(/^```json\s*|```$/g, '').trim();
 
-    if (cleanedResponse && !cleanedResponse.toLowerCase().includes('none')) {
-      const extractedTokens = cleanedResponse
-        .split(/[\s,]+/)
-        .map(t => t.replace(/^['"]|['"]$/g, ''))
-        .filter(t => t.length >= 3 && text.includes(t));
+    let parsed: { found?: boolean; secret?: string } = {};
+    try {
+      parsed = JSON.parse(cleanedResponse);
+    } catch {
+      // If JSON parsing fails, extract potential secret using fallback heuristics or string match
+    }
 
-      const heuristics = fallbackSemanticHeuristics(text);
-      const combinedThreats = Array.from(new Set([...extractedTokens, ...heuristics.semanticThreats]));
-
-      if (combinedThreats.length > 0) {
-        return {
-          isSecret: true,
-          semanticThreats: combinedThreats,
-          explanation: "Gemini Nano on-device model extracted semantic secret tokens."
-        };
-      }
+    if (parsed.found && parsed.secret && text.includes(parsed.secret)) {
+      return {
+        isSecret: true,
+        semanticThreats: [parsed.secret],
+        explanation: "Gemini Nano on-device model identified semantic secret token."
+      };
     }
 
     return fallbackSemanticHeuristics(text);
