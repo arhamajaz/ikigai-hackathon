@@ -14,8 +14,14 @@ export const DLP_RULES: readonly DlpRule[] = [
   // --- CLOUD SECRETS & ENVIRONMENT VARIABLES ---
   {
     id: "AWS_ACCESS_KEY",
-    pattern: /\b(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}\b/g,
+    pattern: /\b(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}\b/g,
     mask: "[REDACTED_AWS_KEY]",
+    needsContext: false
+  },
+  {
+    id: "AWS_MWS_KEY",
+    pattern: /\bamzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g,
+    mask: "[REDACTED_AWS_MWS_KEY]",
     needsContext: false
   },
   {
@@ -25,8 +31,8 @@ export const DLP_RULES: readonly DlpRule[] = [
     needsContext: false
   },
   {
-    id: "GITHUB_PAT",
-    pattern: /\bghp_[a-zA-Z0-9]{36}\b/g,
+    id: "GITHUB_TOKENS",
+    pattern: /\b(?:ghp|gho|ghu|ghs)_[0-9a-zA-Z]{36}\b|\bghr_[0-9a-zA-Z]{76}\b/g,
     mask: "[REDACTED_GITHUB_TOKEN]",
     needsContext: false
   },
@@ -38,7 +44,7 @@ export const DLP_RULES: readonly DlpRule[] = [
   },
   {
     id: "PRIVATE_KEY",
-    pattern: /-----BEGIN [A-Z\s]+ PRIVATE KEY[\s\S]+?-----END [A-Z\s]+ PRIVATE KEY-----/g,
+    pattern: /-----BEGIN (?:(EC|PGP|DSA|RSA|OPENSSH) )?PRIVATE KEY(?: BLOCK)?-----[\s\S]+?-----END (?:(EC|PGP|DSA|RSA|OPENSSH) )?PRIVATE KEY(?: BLOCK)?-----/g,
     mask: "[REDACTED_PRIVATE_KEY]",
     needsContext: false
   },
@@ -55,7 +61,7 @@ export const DLP_RULES: readonly DlpRule[] = [
     needsContext: false
   },
 
-  // --- KEYHACKS API KEY SIGNATURES ---
+  // --- KEYHACKS & GIT-LEAKS SIGNATURES ---
   {
     id: "SLACK_WEBHOOK",
     pattern: /\bhttps:\/\/hooks\.slack\.com\/services\/T[a-zA-Z0-9_]{8}\/B[a-zA-Z0-9_]{8,12}\/[a-zA-Z0-9_]{24}\b/g,
@@ -64,7 +70,7 @@ export const DLP_RULES: readonly DlpRule[] = [
   },
   {
     id: "SLACK_TOKEN",
-    pattern: /\b(?:xox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24})\b/g,
+    pattern: /\b(?:xox[baprs]-[0-9a-zA-Z]{10,48})\b/g,
     mask: "[REDACTED_SLACK_TOKEN]",
     needsContext: false
   },
@@ -82,13 +88,13 @@ export const DLP_RULES: readonly DlpRule[] = [
   },
   {
     id: "SENDGRID_KEY",
-    pattern: /\bSG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}\b/g,
+    pattern: /\bSG\.[a-zA-Z0-9_-]{16,32}\.[a-zA-Z0-9_-]{16,64}\b/g,
     mask: "[REDACTED_SENDGRID_KEY]",
     needsContext: false
   },
   {
     id: "SQUARE_TOKEN",
-    pattern: /\bsq0atp-[0-9A-Za-z\-_]{22}\b/g,
+    pattern: /\bsq0atp-[0-9A-Za-z\-_]{22}\b|\bsq0csp-[0-9A-Za-z\-_]{43}\b/g,
     mask: "[REDACTED_SQUARE_TOKEN]",
     needsContext: false
   },
@@ -109,6 +115,56 @@ export const DLP_RULES: readonly DlpRule[] = [
     pattern: /\bAIza[0-9A-Za-z\-_]{35}\b/g,
     mask: "[REDACTED_GOOGLE_API_KEY]",
     needsContext: false
+  },
+  {
+    id: "BRAINTREE_TOKEN",
+    pattern: /\baccess_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}\b/g,
+    mask: "[REDACTED_BRAINTREE_TOKEN]",
+    needsContext: false
+  },
+  {
+    id: "PICATIC_KEY",
+    pattern: /\bsk_live_[0-9a-z]{32}\b/g,
+    mask: "[REDACTED_PICATIC_KEY]",
+    needsContext: false
+  },
+  {
+    id: "DYNATRACE_TOKEN",
+    pattern: /\bdt0c[0-9]{2}\.[A-Z0-9]{24}\.[A-Z0-9]{64}\b|\bdt0[a-zA-Z][0-9]{2}\.[A-Z0-9]{24}\.[A-Z0-9]{64}\b/g,
+    mask: "[REDACTED_DYNATRACE_TOKEN]",
+    needsContext: false
+  },
+  {
+    id: "SHOPIFY_TOKEN",
+    pattern: /\bshp(?:ss|at|ca|pa)_[a-fA-F0-9]{32}\b/g,
+    mask: "[REDACTED_SHOPIFY_TOKEN]",
+    needsContext: false
+  },
+  {
+    id: "PYPI_TOKEN",
+    pattern: /\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9-_]{50,1000}\b/g,
+    mask: "[REDACTED_PYPI_TOKEN]",
+    needsContext: false
+  },
+
+  // --- SOCIAL MEDIA & CONTEXTUAL SECRETS ---
+  {
+    id: "FACEBOOK_KEY",
+    pattern: /(?:facebook|fb)[\s\S]{0,20}?['"][0-9a-f]{32}['"]/gi,
+    mask: "[REDACTED_FACEBOOK_KEY]",
+    needsContext: true
+  },
+  {
+    id: "TWITTER_KEY",
+    pattern: /(?:twitter)[\s\S]{0,20}?['"][0-9a-z]{35,44}['"]/gi,
+    mask: "[REDACTED_TWITTER_KEY]",
+    needsContext: true
+  },
+  {
+    id: "LINKEDIN_KEY",
+    pattern: /(?:linkedin)[\s\S]{0,20}?['"][0-9a-z]{12,16}['"]/gi,
+    mask: "[REDACTED_LINKEDIN_KEY]",
+    needsContext: true
   },
 
   // --- REGIONAL & GLOBAL IDENTIFIERS ---
@@ -174,6 +230,18 @@ export const DLP_RULES: readonly DlpRule[] = [
     mask: "[REDACTED_PASSWORD]",
     needsContext: false
   },
+  {
+    id: "ENV_VAR_CREDENTIAL",
+    pattern: /(?:apikey|api_key|secret|password|passwd|pwd|pass|auth|token)[\s]*[=:][\s]*['"]?[0-9a-zA-Z-_.\/+!{}/=]{6,120}['"]?/gi,
+    mask: "[REDACTED_ENV_CREDENTIAL]",
+    needsContext: false
+  },
+  {
+    id: "WP_CONFIG_CREDENTIAL",
+    pattern: /define\s*\(\s*['"](?:DB_PASSWORD|NONCE_SALT|LOGGED_IN_SALT|AUTH_SALT|NONCE_KEY|DB_HOST|AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|DB_NAME|DB_USER)['"]\s*,\s*['"][^'"]{4,120}['"]\s*\)/gi,
+    mask: "[REDACTED_WP_CONFIG_CREDENTIAL]",
+    needsContext: false
+  },
 
   // --- GENERIC SENSITIVE PII ---
   {
@@ -205,6 +273,18 @@ export function hasSensitiveContext(fullText: string, matchIndex: number, ruleId
   
   if (ruleId === "HEROKU_KEY") {
     return /\b(heroku|api[_\s]*key|token|auth|secret)\b/.test(contextWindow);
+  }
+
+  if (ruleId === "FACEBOOK_KEY") {
+    return /\b(facebook|fb)\b/.test(contextWindow);
+  }
+
+  if (ruleId === "TWITTER_KEY") {
+    return /\b(twitter)\b/.test(contextWindow);
+  }
+
+  if (ruleId === "LINKEDIN_KEY") {
+    return /\b(linkedin)\b/.test(contextWindow);
   }
 
   if (ruleId === "UPI_PIN") {

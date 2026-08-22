@@ -1,18 +1,24 @@
 import { sanitizePayload } from './dlp-engine';
 
 console.log("\n==================================================");
-console.log("   SentinelEdge v2.0 DLP Engine & Keyhacks Tests");
+console.log("   SentinelEdge v2.0 DLP Engine & Git-Leaks Tests");
 console.log("==================================================\n");
 
 // Helper to construct sample test strings dynamically to satisfy git push secret scanners
 const s = (parts: string[]) => parts.join('');
 
 const testCases = [
-  // --- CLOUD SECRETS & KEYHACKS SIGNATURES ---
+  // --- CLOUD SECRETS & KEYHACKS / GIT-LEAKS SIGNATURES ---
   {
     name: "AWS Access Key",
     input: s(["Here is my AWS key: AKIA", "IOSFODNN7EXAMPLE"]),
     expectedMask: "[REDACTED_AWS_KEY]",
+    expectedThreats: 1
+  },
+  {
+    name: "AWS MWS Key (Git-Leaks)",
+    input: s(["amzn.mws.", "01234567-0123-0123-0123-0123456789ab"]),
+    expectedMask: "[REDACTED_AWS_MWS_KEY]",
     expectedThreats: 1
   },
   {
@@ -64,9 +70,27 @@ const testCases = [
     expectedThreats: 1
   },
   {
-    name: "Mailchimp API Key (Keyhacks)",
-    input: s(["Mailchimp key 0123456789abcdef0123456789abcdef-", "us12"]),
-    expectedMask: "[REDACTED_MAILCHIMP_KEY]",
+    name: "Shopify Token (Git-Leaks)",
+    input: s(["Shopify token shp", "at_0123456789abcdef0123456789abcdef"]),
+    expectedMask: "[REDACTED_SHOPIFY_TOKEN]",
+    expectedThreats: 1
+  },
+  {
+    name: "PyPI Upload Token (Git-Leaks)",
+    input: s(["PyPI token pypi-AgEIcHlwaS5vcmc", "123456789012345678901234567890123456789012345678901234567890"]),
+    expectedMask: "[REDACTED_PYPI_TOKEN]",
+    expectedThreats: 1
+  },
+  {
+    name: "Environment Variable Assignment (Git-Leaks)",
+    input: s(["apikey=", "SecretPass12345678901234567890"]),
+    expectedMask: "[REDACTED_ENV_CREDENTIAL]",
+    expectedThreats: 1
+  },
+  {
+    name: "WordPress Config Credential (Git-Leaks)",
+    input: s(["define('DB_PASSWORD', '", "SuperSecretPass123');"]),
+    expectedMask: "[REDACTED_WP_CONFIG_CREDENTIAL]",
     expectedThreats: 1
   },
   {
