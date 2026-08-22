@@ -32,7 +32,7 @@ export const DLP_RULES: readonly DlpRule[] = [
   },
   {
     id: "STRIPE_KEY",
-    pattern: /\b(?:sk|rk)_(?:test|live)_[a-zA-Z0-9]{24,}\b/g,
+    pattern: /\b(?:sk|rk|pk)_(?:test|live)_[a-zA-Z0-9]{24,99}\b/g,
     mask: "[REDACTED_STRIPE_KEY]",
     needsContext: false
   },
@@ -52,6 +52,62 @@ export const DLP_RULES: readonly DlpRule[] = [
     id: "JWT_TOKEN",
     pattern: /\beyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\b/g,
     mask: "[REDACTED_JWT]",
+    needsContext: false
+  },
+
+  // --- KEYHACKS API KEY SIGNATURES ---
+  {
+    id: "SLACK_WEBHOOK",
+    pattern: /\bhttps:\/\/hooks\.slack\.com\/services\/T[a-zA-Z0-9_]{8}\/B[a-zA-Z0-9_]{8,12}\/[a-zA-Z0-9_]{24}\b/g,
+    mask: "[REDACTED_SLACK_WEBHOOK]",
+    needsContext: false
+  },
+  {
+    id: "SLACK_TOKEN",
+    pattern: /\b(?:xox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24})\b/g,
+    mask: "[REDACTED_SLACK_TOKEN]",
+    needsContext: false
+  },
+  {
+    id: "MAILGUN_KEY",
+    pattern: /\bkey-[0-9a-zA-Z]{32}\b/g,
+    mask: "[REDACTED_MAILGUN_KEY]",
+    needsContext: false
+  },
+  {
+    id: "TWILIO_KEY",
+    pattern: /\bSK[0-9a-fA-F]{32}\b/g,
+    mask: "[REDACTED_TWILIO_KEY]",
+    needsContext: false
+  },
+  {
+    id: "SENDGRID_KEY",
+    pattern: /\bSG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}\b/g,
+    mask: "[REDACTED_SENDGRID_KEY]",
+    needsContext: false
+  },
+  {
+    id: "SQUARE_TOKEN",
+    pattern: /\bsq0atp-[0-9A-Za-z\-_]{22}\b/g,
+    mask: "[REDACTED_SQUARE_TOKEN]",
+    needsContext: false
+  },
+  {
+    id: "MAILCHIMP_KEY",
+    pattern: /\b[0-9a-f]{32}-us[0-9]{1,2}\b/g,
+    mask: "[REDACTED_MAILCHIMP_KEY]",
+    needsContext: false
+  },
+  {
+    id: "HEROKU_KEY",
+    pattern: /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g,
+    mask: "[REDACTED_HEROKU_KEY]",
+    needsContext: true
+  },
+  {
+    id: "GOOGLE_API_KEY",
+    pattern: /\bAIza[0-9A-Za-z\-_]{35}\b/g,
+    mask: "[REDACTED_GOOGLE_API_KEY]",
     needsContext: false
   },
 
@@ -82,7 +138,7 @@ export const DLP_RULES: readonly DlpRule[] = [
   },
   {
     id: "GLOBAL_PHONE_NUMBER",
-    pattern: /(?:(?:\+|00)[1-9]\d{0,3}[\s.\-]?)?(?:\(\d{1,5}\)[\s.\-]?)?\d{2,5}(?:[\s.\-]\d{2,5}){1,4}\b|\b[6-9]\d{9}\b/g,
+    pattern: /(?:\+|00)[1-9]\d{0,3}[\s.\-]?(?:\(\d{1,5}\)[\s.\-]?)?\d{2,4}[\s.\-]?\d{3,4}[\s.\-]?\d{3,4}\b|(?:\(\d{3}\)|\b\d{3})[\s.\-]\d{3}[\s.\-]\d{4}\b|\b[6-9]\d{9}\b/g,
     mask: "[REDACTED_PHONE_NUMBER]",
     needsContext: false
   },
@@ -122,7 +178,7 @@ export const DLP_RULES: readonly DlpRule[] = [
   // --- GENERIC SENSITIVE PII ---
   {
     id: "CREDIT_CARD",
-    pattern: /\b(?:\d[ -]?){13,18}\d\b/g,
+    pattern: /\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3(?:0[0-5]|[68][0-9])[0-9]{11}|6(?:011|5[0-9]{2})[0-9]{12}|(?:[0-9]{4}[ -]){3}[0-9]{4})\b/g,
     mask: "[REDACTED_CREDIT_CARD]",
     needsContext: false
   },
@@ -141,12 +197,16 @@ export const DLP_RULES: readonly DlpRule[] = [
 ];
 
 /**
- * Contextual validation filter to prevent false positives on short numeric strings or dates.
+ * Contextual validation filter to prevent false positives on short numeric strings, dates, or generic UUIDs.
  * Inspects a 30-character window preceding the match for sensitive context keywords with word boundaries.
  */
 export function hasSensitiveContext(fullText: string, matchIndex: number, ruleId: string): boolean {
   const contextWindow = fullText.substring(Math.max(0, matchIndex - 30), matchIndex).toLowerCase();
   
+  if (ruleId === "HEROKU_KEY") {
+    return /\b(heroku|api[_\s]*key|token|auth|secret)\b/.test(contextWindow);
+  }
+
   if (ruleId === "UPI_PIN") {
     return /\b(upi|vpa)\b/.test(contextWindow);
   }
@@ -171,8 +231,8 @@ export function hasSensitiveContext(fullText: string, matchIndex: number, ruleId
 }
 
 /**
- * Sanitizes the given input string using high-performance regex matching, contextual validation,
- * positional slice substitution, and sub-5ms latency profiling.
+ * Sanitizes the given input string using pre-compiled high-performance regex matching,
+ * contextual validation, positional slice substitution, and sub-2ms latency profiling.
  * 
  * @param rawText Input payload text to inspect and redact.
  * @returns SanitizationResult containing redacted text and count of blocked threats.
@@ -186,7 +246,8 @@ export function sanitizePayload(rawText: string): SanitizationResult {
   let sanitizedText = rawText;
   let threatCount = 0;
 
-  DLP_RULES.forEach(rule => {
+  for (let r = 0; r < DLP_RULES.length; r++) {
+    const rule = DLP_RULES[r];
     rule.pattern.lastIndex = 0; 
     
     interface MatchItem {
@@ -213,7 +274,7 @@ export function sanitizePayload(rawText: string): SanitizationResult {
       sanitizedText = sanitizedText.slice(0, m.index) + rule.mask + sanitizedText.slice(m.index + m.length);
       threatCount++;
     }
-  });
+  }
 
   if (t0 > 0 && typeof performance !== 'undefined') {
     const duration = performance.now() - t0;
