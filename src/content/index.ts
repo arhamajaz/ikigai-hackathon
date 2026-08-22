@@ -1,5 +1,5 @@
 /**
- * SentinelEdge v2.1.0 Content Script
+ * SentinelEdge v2.2.0 Content Script
  * Hierarchical Cascading Interception Pipeline Architecture:
  * Fast-Path Regex -> Semantic Trigger Guard -> Timed Local AI Fallback -> Policy Engine -> Release
  * Multi-Platform Adapters: ChatGPT, Claude, Gemini, Perplexity, Microsoft Copilot
@@ -15,7 +15,7 @@ import {
 import { PolicyEngine } from '../core/policy-engine';
 
 console.log(
-  "%c[SentinelEdge v2.1.0]%c Hierarchical Cascading DLP Pipeline Active (Fast-Path -> AI Guard -> Policy Engine).",
+  "%c[SentinelEdge v2.2.0]%c Hierarchical Cascading DLP Pipeline Active (Fast-Path -> AI Guard -> Policy Engine).",
   "color: #10B981; font-weight: bold; font-size: 13px;",
   "color: inherit;"
 );
@@ -122,6 +122,7 @@ export async function processSubmissionGate(rawText: string): Promise<{ sanitize
  */
 function showInterceptionToast(threatCount: number): void {
   try {
+    if (typeof document === 'undefined') return;
     const existing = document.getElementById('sentinel-toast-banner');
     if (existing) existing.remove();
 
@@ -150,7 +151,7 @@ function showInterceptionToast(threatCount: number): void {
 
     toast.innerHTML = `
       <span style="font-size: 18px;">🛡️</span>
-      <span>SentinelEdge DLP v2.1: Redacted <strong>${threatCount}</strong> sensitive threat${threatCount > 1 ? 's' : ''}!</span>
+      <span>SentinelEdge DLP v2.2: Redacted <strong>${threatCount}</strong> sensitive threat${threatCount > 1 ? 's' : ''}!</span>
     `;
 
     document.body.appendChild(toast);
@@ -184,6 +185,7 @@ function isEditable(el: Element | null): boolean {
  * Finds the primary prompt input element on ChatGPT, Claude, Gemini, Perplexity, or Microsoft Copilot.
  */
 function getPromptElement(): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
   const activeEl = document.activeElement as HTMLElement | null;
   if (activeEl && isEditable(activeEl)) {
     return activeEl;
@@ -197,6 +199,7 @@ function getPromptElement(): HTMLElement | null {
  * Finds the target send or edit-submit button on ChatGPT, Claude, Gemini, Perplexity, or Microsoft Copilot.
  */
 function getSendButton(): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
   return document.querySelector<HTMLElement>(SUBMIT_BUTTON_SELECTORS);
 }
 
@@ -231,7 +234,7 @@ function recordTelemetry(threatCount: number, originalLength: number, sanitizedL
           threatsBlocked: threatCount,
           originalLength,
           sanitizedLength,
-          originUrl: window.location.hostname
+          originUrl: (typeof window !== 'undefined' && window.location) ? window.location.hostname : 'local'
         };
 
         const updatedLog = [newIncident, ...currentLog].slice(0, 100);
@@ -252,6 +255,8 @@ function recordTelemetry(threatCount: number, originalLength: number, sanitizedL
  * Perplexity (Slate), and Microsoft Copilot (Fluent).
  */
 function syncAndReplaceDOM(inputElem: HTMLElement, sanitizedText: string): void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
   if (inputElem instanceof HTMLTextAreaElement || inputElem instanceof HTMLInputElement) {
     const valueSetter =
       Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set ||
@@ -285,7 +290,6 @@ function syncAndReplaceDOM(inputElem: HTMLElement, sanitizedText: string): void 
 
 /**
  * INSTANT PASTE INTERCEPTION ('paste' event)
- * Sanitizes and masks clipboard text before it touches the DOM.
  */
 function handlePasteEvent(event: ClipboardEvent): void {
   const target = (event.target as HTMLElement) || getPromptElement();
@@ -315,7 +319,7 @@ function handlePasteEvent(event: ClipboardEvent): void {
 
     recordTelemetry(threatCount, rawClipboard.length, sanitizedText.length);
     showInterceptionToast(threatCount);
-    console.warn(`[SentinelEdge v2.1.0] Instant Paste Intercepted: Redacted ${threatCount} threat${threatCount > 1 ? 's' : ''}.`);
+    console.warn(`[SentinelEdge v2.2.0] Instant Paste Intercepted: Redacted ${threatCount} threat${threatCount > 1 ? 's' : ''}.`);
   }
 }
 
@@ -364,7 +368,7 @@ async function executeSanitizationAndRelease(
     syncAndReplaceDOM(targetElem, sanitizedText);
     recordTelemetry(totalThreats, rawText.length, sanitizedText.length);
     showInterceptionToast(totalThreats);
-    console.warn(`[SentinelEdge v2.1.0] Pipeline redacted ${totalThreats} threat${totalThreats > 1 ? 's' : ''} prior to submission.`);
+    console.warn(`[SentinelEdge v2.2.0] Pipeline redacted ${totalThreats} threat${totalThreats > 1 ? 's' : ''} prior to submission.`);
   }
 
   isBypassingGate = true;
@@ -441,27 +445,24 @@ function handlePreFlightClick(event: MouseEvent): void {
   }
 }
 
-// 1. Attach capturing paste listener for Instant Paste Interception
-document.addEventListener('paste', handlePasteEvent, true);
+// Attach event listeners safely in browser DOM environments
+if (typeof document !== 'undefined') {
+  document.addEventListener('paste', handlePasteEvent, true);
+  document.addEventListener('input', handleInputDebounced, true);
+  document.addEventListener('keydown', handlePreFlightKeydown, true);
+  document.addEventListener('click', handlePreFlightClick, true);
 
-// 2. Attach capturing input listener for 500ms Debounced Background Pre-Scanning
-document.addEventListener('input', handleInputDebounced, true);
+  const observer = new MutationObserver(() => {
+    const prompt = getPromptElement();
+    if (prompt && !prompt.dataset.sentinelActive) {
+      prompt.dataset.sentinelActive = "true";
+    }
+  });
 
-// 3. Attach capturing keydown listener for Pre-Flight 'Enter' Gate
-document.addEventListener('keydown', handlePreFlightKeydown, true);
-
-// 4. Attach capturing click listener for Pre-Flight 'Send' / Edit-Submit Button Gate
-document.addEventListener('click', handlePreFlightClick, true);
-
-// 5. Dynamic SPA Lifecycle Engine: MutationObserver
-const observer = new MutationObserver(() => {
-  const prompt = getPromptElement();
-  if (prompt && !prompt.dataset.sentinelActive) {
-    prompt.dataset.sentinelActive = "true";
+  if (document.body) {
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
   }
-});
-
-observer.observe(document.body, {
-  childList: true,
-  subtree: true
-});
+}

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SentinelEdge - Zero-Latency DLP Firewall",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Zero-latency, 100% client-side privacy firewall for Generative AI (ChatGPT, Claude, Gemini, Perplexity, Copilot).",
   "permissions": [
     "clipboardRead",
@@ -23,7 +23,7 @@
   },
   "action": {
     "default_popup": "src/popup/index.html",
-    "default_title": "SentinelEdge DLP v2.1.0"
+    "default_title": "SentinelEdge DLP v2.2.0"
   },
   "content_scripts": [
     {
