@@ -1,7 +1,7 @@
 import { sanitizePayload, DLP_RULES } from './dlp-engine';
 
 console.log("\n==================================================");
-console.log("   SentinelEdge v2.1 DLP Engine & Fallback Tests");
+console.log("   SentinelEdge v3.0 DLP Engine & Fallback Tests");
 console.log("==================================================\n");
 
 const s = (parts: string[]) => parts.join('');
@@ -110,6 +110,20 @@ const testCases = [
     name: "WordPress Config Credential (Git-Leaks)",
     input: "define('DB_PASSWORD', 'SuperSecretPass123');",
     expectedMask: "[REDACTED_WP_CONFIG_CREDENTIAL]",
+    expectedThreats: 1
+  },
+
+  // --- BANK ACCOUNT REDACTION ---
+  {
+    name: "Indian Bank Account Number",
+    input: "My bank account number is 50100234567890 for transfer.",
+    expectedMask: "[REDACTED_BANK_ACCOUNT]",
+    expectedThreats: 1
+  },
+  {
+    name: "International IBAN Bank Account",
+    input: "Transfer funds to IBAN GB33BUKB20201555555555 now.",
+    expectedMask: "[REDACTED_BANK_ACCOUNT]",
     expectedThreats: 1
   },
 

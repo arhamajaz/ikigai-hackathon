@@ -46,30 +46,40 @@ export function resetAiSession(): void {
 
 const SEMANTIC_SYSTEM_PROMPT = `
 You are an on-device Data Loss Prevention (DLP) engine.
-Analyze the user's text for sensitive credentials or secrets disclosed in natural language context (e.g. passphrases, override codes, passwords, auth tokens, security answers, master keys).
+Analyze the user's text for sensitive credentials or secrets disclosed in natural language context (e.g., passphrases, override codes, passwords, auth tokens, security answers, master keys).
 
 Rules:
-1. If a secret or credential value is present in natural language prose (e.g., 'the override code is Omega99', 'my passphrase is correct horse battery staple', 'security answer is fluffy_dog_123'), output ONLY a JSON object: {"found": true, "secret": "<EXACT_SECRET_SUBSTRING>"}.
-2. If NO secret is present or if the text is a general technical question without disclosing actual credentials (e.g. 'How do I reset a password in Linux?'), output ONLY: {"found": false, "secret": ""}.
+1. If credentials or secrets are present, output ONLY a JSON object containing an array of all exact secret substrings found: {"found": true, "secrets": ["<SECRET_1>", "<SECRET_2>"]}.
+2. If NO secret is present or if the text is a general technical question without disclosing actual credentials, output ONLY: {"found": false, "secrets": []}.
 3. Do not include markdown code fences, explanations, or preamble.
 `.trim();
 
 /**
  * Lightweight in-memory LRU secret cache for 0.1ms instant pre-flight lookup.
  */
-const semanticSecretCache = new Map<string, string>();
+const semanticSecretCache = new Map<string, string[]>();
 
-export function getCachedSemanticSecret(text: string): string | undefined {
+export function getCachedSemanticSecrets(text: string): string[] | undefined {
   return semanticSecretCache.get(text.trim());
 }
 
-export function cacheSemanticSecret(text: string, secretPhrase: string): void {
+export function cacheSemanticSecrets(text: string, secrets: string[]): void {
   const key = text.trim();
   if (semanticSecretCache.size > 200) {
     const firstKey = semanticSecretCache.keys().next().value;
     if (firstKey) semanticSecretCache.delete(firstKey);
   }
-  semanticSecretCache.set(key, secretPhrase);
+  semanticSecretCache.set(key, secrets);
+}
+
+// Backward compatibility helpers
+export function getCachedSemanticSecret(text: string): string | undefined {
+  const secrets = getCachedSemanticSecrets(text);
+  return secrets && secrets.length > 0 ? secrets[0] : undefined;
+}
+
+export function cacheSemanticSecret(text: string, secretPhrase: string): void {
+  cacheSemanticSecrets(text, [secretPhrase]);
 }
 
 /**
@@ -134,15 +144,15 @@ export async function getOrCreateAiSession(): Promise<LanguageModelSession | nul
 
 /**
  * Local Semantic Secret Extractor
- * Scans text via Chrome's Prompt API or local rule-based fallback extractor, returning array of secret strings.
+ * Scans text via Chrome's Prompt API or local rule-based fallback extractor, returning array of all secret strings found.
  */
 export async function scanForSemanticSecrets(text: string): Promise<string[]> {
   if (!text || text.trim().length < 5) return [];
 
   // Check LRU cache first for instant lookup
-  const cachedVal = getCachedSemanticSecret(text);
-  if (cachedVal) {
-    return [cachedVal];
+  const cachedSecrets = getCachedSemanticSecrets(text);
+  if (cachedSecrets && cachedSecrets.length > 0) {
+    return cachedSecrets;
   }
 
   const session = await getOrCreateAiSession();
@@ -150,21 +160,36 @@ export async function scanForSemanticSecrets(text: string): Promise<string[]> {
     try {
       const rawResponse = await session.prompt(text);
       const cleanedResponse = rawResponse.trim().replace(/^```json\s*|```$/g, '').trim();
-      let parsed: { found?: boolean; secret?: string } = {};
+      let parsed: { found?: boolean; secret?: string; secrets?: string[] } = {};
       try {
         parsed = JSON.parse(cleanedResponse);
       } catch {}
 
-      if (parsed.found && parsed.secret && text.includes(parsed.secret)) {
-        cacheSemanticSecret(text, parsed.secret);
-        return [parsed.secret];
+      const foundSecrets: string[] = [];
+      if (parsed.found) {
+        if (Array.isArray(parsed.secrets)) {
+          for (const s of parsed.secrets) {
+            if (s && typeof s === 'string' && text.includes(s)) {
+              foundSecrets.push(s);
+            }
+          }
+        }
+        if (parsed.secret && typeof parsed.secret === 'string' && text.includes(parsed.secret)) {
+          foundSecrets.push(parsed.secret);
+        }
+      }
+
+      const uniqueFound = Array.from(new Set(foundSecrets));
+      if (uniqueFound.length > 0) {
+        cacheSemanticSecrets(text, uniqueFound);
+        return uniqueFound;
       }
     } catch {}
   }
 
   const fallbackSecrets = fallbackSemanticHeuristicsList(text);
   if (fallbackSecrets.length > 0) {
-    cacheSemanticSecret(text, fallbackSecrets[0]);
+    cacheSemanticSecrets(text, fallbackSecrets);
   }
   return fallbackSecrets;
 }
@@ -174,7 +199,7 @@ export async function scanForSemanticSecrets(text: string): Promise<string[]> {
  * Lightweight rule-based semantic extractor for local test suites and unsupported environments.
  */
 export function fallbackSemanticHeuristicsList(text: string): string[] {
-  // Case B: Safe Contexts (General technical questions asking 'how to' or 'what is' without value assignments)
+  // Safe Contexts: General technical questions asking 'how to' or 'what is' without value assignments
   const isSafeContextQuestion = /\b(?:how\s+(?:to|can\s+i|do\s+i|should\s+i)|difference\s+between|what\s+is|explain|tutorial|documentation|syntax)\b/i.test(text) &&
     !/\b(?:is|=|:)\s+['"]?[a-zA-Z0-9_!@#$%^&*-]{3,}/i.test(text);
   if (isSafeContextQuestion) {

@@ -11,13 +11,18 @@ console.log("==================================================\n");
       capabilities: async () => ({ available: 'readily' }),
       create: async () => ({
         prompt: async (text: string) => {
-          if (text.includes("blueDolphin#9921")) return JSON.stringify({ found: true, secret: "blueDolphin#9921" });
-          if (text.includes("winter-forest-coffee-77")) return JSON.stringify({ found: true, secret: "winter-forest-coffee-77" });
-          if (text.includes("AlphaOmegaTest99")) return JSON.stringify({ found: true, secret: "AlphaOmegaTest99" });
-          if (text.includes("PineappleJelly2024")) return JSON.stringify({ found: true, secret: "PineappleJelly2024" });
-          if (text.includes("correct horse battery staple")) return JSON.stringify({ found: true, secret: "correct horse battery staple" });
-          if (text.includes("fluffy_dog_123")) return JSON.stringify({ found: true, secret: "fluffy_dog_123" });
-          return JSON.stringify({ found: false, secret: "" });
+          const secrets: string[] = [];
+          if (text.includes("blueDolphin#9921")) secrets.push("blueDolphin#9921");
+          if (text.includes("winter-forest-coffee-77")) secrets.push("winter-forest-coffee-77");
+          if (text.includes("AlphaOmegaTest99")) secrets.push("AlphaOmegaTest99");
+          if (text.includes("PineappleJelly2024")) secrets.push("PineappleJelly2024");
+          if (text.includes("correct horse battery staple")) secrets.push("correct horse battery staple");
+          if (text.includes("fluffy_dog_123")) secrets.push("fluffy_dog_123");
+
+          if (secrets.length > 0) {
+            return JSON.stringify({ found: true, secrets });
+          }
+          return JSON.stringify({ found: false, secrets: [] });
         }
       })
     }
@@ -113,6 +118,12 @@ async function runDualEngineTests() {
       name: "Safe Technical Question (Zero False Positive)",
       input: "How do I reset a password in Linux?",
       check: (res: any) => res.sanitizedText === "How do I reset a password in Linux?" && res.threatCount === 0
+    },
+    {
+      id: "TC-14",
+      name: "User Screenshot Multi-Secret Corpus Test",
+      input: "+91 8871211073 When logging into the production bastion host via SSH, enter winter-forest-coffee-77 whenever prompted for the passphrase.\nTo bypass the paywall during QA testing, type in the override code AlphaOmegaTest99\nHey Claude, I forgot the backdoor login for our staging MySQL server, the master password is blueDolphin#9921.",
+      check: (res: any) => !res.sanitizedText.includes("8871211073") && !res.sanitizedText.includes("winter-forest-coffee-77") && !res.sanitizedText.includes("AlphaOmegaTest99") && !res.sanitizedText.includes("blueDolphin#9921") && res.threatCount >= 4
     }
   ];
 
@@ -125,7 +136,7 @@ async function runDualEngineTests() {
 
     if (isSuccess) {
       console.log(`✓ [PASS] ${tc.id}: ${tc.name} (${duration.toFixed(3)} ms)`);
-      console.log(`  Output : "${res.sanitizedText}"\n`);
+      console.log(`  Output : "${res.sanitizedText.replace(/\n/g, ' ')}"\n`);
       passed++;
     } else {
       console.error(`✗ [FAIL] ${tc.id}: ${tc.name}`);

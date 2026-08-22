@@ -171,7 +171,27 @@ export const DLP_RULES: readonly DlpRule[] = [
     needsContext: false
   },
 
-  // --- SOCIAL MEDIA & CONTEXTUAL SECRETS ---
+  // --- FAST-PATH PROSE CREDENTIALS & CONTEXTUAL SECRETS ---
+  {
+    id: "PASSPHRASE_PROSE",
+    pattern: /(?:\b(?:type\s+in|enter|use|input)\s+['"]?)([a-zA-Z0-9_-]{4,64})(?=['"]?\s+(?:whenever|when|for|as|if|to|in|into|on|at|with)\b[\s\S]{0,40}?\b(?:passphrase|password|secret|key|token|credential|login|ssh|bastion|auth|code|paywall|override)\b)/gi,
+    mask: "[REDACTED_SEMANTIC_SECRET]",
+    needsContext: false
+  },
+  {
+    id: "OVERRIDE_CODE_PROSE",
+    pattern: /(?:\b(?:override\s+code|bypass\s+code|paywall\s+code|access\s+code)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    mask: "[REDACTED_SEMANTIC_SECRET]",
+    needsContext: false
+  },
+  {
+    id: "MASTER_PASSWORD_PROSE",
+    pattern: /(?:\b(?:master\s+password|backdoor\s+login|staging\s+password|database\s+password)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    mask: "[REDACTED_SEMANTIC_SECRET]",
+    needsContext: false
+  },
+
+  // --- SOCIAL MEDIA SECRETS ---
   {
     id: "FACEBOOK_KEY",
     pattern: /(?:facebook|fb)[\s\S]{0,20}?['"][0-9a-f]{32}['"]/gi,
@@ -188,6 +208,14 @@ export const DLP_RULES: readonly DlpRule[] = [
     id: "LINKEDIN_KEY",
     pattern: /(?:linkedin)[\s\S]{0,20}?['"][0-9a-z]{12,16}['"]/gi,
     mask: "[REDACTED_LINKEDIN_KEY]",
+    needsContext: true
+  },
+
+  // --- FINANCIAL & BANKING IDENTIFIERS ---
+  {
+    id: "BANK_ACCOUNT",
+    pattern: /\b[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}\b|\b[0-9]{9,18}\b/g,
+    mask: "[REDACTED_BANK_ACCOUNT]",
     needsContext: true
   },
 
@@ -319,6 +347,10 @@ export function hasSensitiveContext(fullText: string, matchIndex: number, ruleId
     return /\b(linkedin)\b/.test(contextWindow);
   }
 
+  if (ruleId === "BANK_ACCOUNT") {
+    return /\b(account|acc|a\/c|bank|ac|iban)\b/.test(contextWindow);
+  }
+
   if (ruleId === "UPI_PIN") {
     return /\b(upi|vpa)\b/.test(contextWindow);
   }
@@ -376,7 +408,7 @@ export function sanitizePayload(rawText: string): SanitizationResult {
         continue;
       }
 
-      if (rule.id === "GENERIC_KEY_VALUE_FALLBACK" && match[1]) {
+      if ((rule.id === "GENERIC_KEY_VALUE_FALLBACK" || rule.id === "PASSPHRASE_PROSE" || rule.id === "OVERRIDE_CODE_PROSE" || rule.id === "MASTER_PASSWORD_PROSE") && match[1]) {
         // Replace only the captured sensitive value, keeping assignment key or prose prefix intact
         const fullMatchStr = match[0];
         const secretVal = match[1];

@@ -92,8 +92,7 @@ export async function processSubmissionGate(rawText: string): Promise<{ sanitize
   let { sanitizedText, threatCount } = sanitizePayload(rawText);
 
   // Step 2: AI Availability & Timeout Fallback Guard
-  const isAiAvailable = await checkGeminiNanoAvailability();
-  if (isAiAvailable && needsSemanticCheck(sanitizedText)) {
+  if (needsSemanticCheck(sanitizedText)) {
     try {
       const aiTask = executeAiRegexHandshake(sanitizedText);
       const timeoutTask = new Promise<never>((_, reject) =>
