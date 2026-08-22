@@ -62,7 +62,7 @@ export function cacheSemanticSecret(text: string, secretPhrase: string): void {
 }
 
 /**
- * STEP 2: Graceful Fallback & Environment Check
+ * Graceful Fallback & Environment Check
  * Verifies if Chrome's Prompt API (Gemini Nano) is enabled without throwing exceptions in Firefox/Safari.
  */
 export async function checkGeminiNanoAvailability(): Promise<boolean> {
@@ -105,7 +105,7 @@ export async function getOrCreateAiSession(): Promise<LanguageModelSession | nul
 
     isInitializing = false;
     return activeAiSession;
-  } catch (err) {
+  } catch {
     isInitializing = false;
     return null;
   }
@@ -148,6 +148,8 @@ export async function scanSemanticSecrets(text: string): Promise<SemanticScanRes
  */
 function fallbackSemanticHeuristics(text: string): SemanticScanResult {
   const semanticPatterns = [
+    /\b(?:enter|use|type|input)\s+['"]?([a-zA-Z0-9_-]{4,64})['"]?\s+(?:whenever|when|for|as)\s+(?:prompted|the|a)?\s*(?:passphrase|password|secret|key|token|credential)/gi,
+    /\b(?:passphrase|password|passcode|secret|access\s*key|auth\s*token)\s*(?:is|=|:|\s)\s*['"]?([a-zA-Z0-9_-]{4,64})['"]?/gi,
     /\b(?:backdoor|admin|root|login|passcode|secret|password|access\s*key)[\s\S]{0,45}?\b(?:is|=|:)\s+['"]?([a-zA-Z0-9_!@#$%^&*]{4,32})['"]?/gi,
     /\b(?:the|my|our)\s+(?:secret|password|access\s*key)\s+is\s+['"]?([a-zA-Z0-9_!@#$%^&*]{4,32})['"]?/gi
   ];
@@ -173,7 +175,7 @@ function fallbackSemanticHeuristics(text: string): SemanticScanResult {
 }
 
 /**
- * STEP 1 & STEP 2 & STEP 3: THE AI / REGEX HANDSHAKE PIPELINE
+ * THE AI / REGEX HANDSHAKE PIPELINE
  *  - Step 1: 200ms Promise.race() Timeout Budget
  *  - Step 2: Graceful Fallback for Unsupported Browsers (Firefox, Safari, Edge)
  *  - Step 3: Debounced Background Pre-Scanning Cache Lookups (0.1ms)
