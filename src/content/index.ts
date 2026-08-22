@@ -1,13 +1,14 @@
 /**
- * SentinelEdge v2.0.0 Content Script
+ * SentinelEdge v2.1.0 Content Script
  * Hybrid DLP Masking Architecture: Instant Paste Interception + Just-In-Time Pre-Flight Typing Gate
  * Multi-Platform Adapters: ChatGPT, Claude, Gemini, Perplexity, Microsoft Copilot
+ * Expanded DLP Lexicon: Keyhacks + Git-Leaks Signatures
  */
 
 import { sanitizePayload } from '../core/dlp-engine';
 
 console.log(
-  "%c[SentinelEdge v2.0.0]%c Universal DLP Firewall & JIT Pre-Flight Gatekeeper Active (Sub-2ms Engine).",
+  "%c[SentinelEdge v2.1.0]%c Universal DLP Firewall & JIT Pre-Flight Gatekeeper Active (Sub-2ms Engine).",
   "color: #10B981; font-weight: bold; font-size: 13px;",
   "color: inherit;"
 );
@@ -78,7 +79,7 @@ function showInterceptionToast(threatCount: number): void {
 
     toast.innerHTML = `
       <span style="font-size: 18px;">🛡️</span>
-      <span>SentinelEdge DLP v2.0: Redacted <strong>${threatCount}</strong> sensitive threat${threatCount > 1 ? 's' : ''}!</span>
+      <span>SentinelEdge DLP v2.1: Redacted <strong>${threatCount}</strong> sensitive threat${threatCount > 1 ? 's' : ''}!</span>
     `;
 
     document.body.appendChild(toast);
@@ -243,7 +244,7 @@ function handlePasteEvent(event: ClipboardEvent): void {
 
     recordTelemetry(threatCount, rawClipboard.length, sanitizedText.length);
     showInterceptionToast(threatCount);
-    console.warn(`[SentinelEdge v2.0.0] Instant Paste Intercepted: Redacted ${threatCount} threat${threatCount > 1 ? 's' : ''}.`);
+    console.warn(`[SentinelEdge v2.1.0] Instant Paste Intercepted: Redacted ${threatCount} threat${threatCount > 1 ? 's' : ''}.`);
   }
 }
 
@@ -264,7 +265,7 @@ function executeSanitizationAndRelease(
     syncAndReplaceDOM(targetElem, sanitizedText);
     recordTelemetry(threatCount, rawText.length, sanitizedText.length);
     showInterceptionToast(threatCount);
-    console.warn(`[SentinelEdge v2.0.0] Pre-Flight Gate redacted ${threatCount} threat${threatCount > 1 ? 's' : ''} prior to submission.`);
+    console.warn(`[SentinelEdge v2.1.0] Pre-Flight Gate redacted ${threatCount} threat${threatCount > 1 ? 's' : ''} prior to submission.`);
   }
 
   isBypassingGate = true;

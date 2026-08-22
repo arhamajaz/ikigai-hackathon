@@ -1,12 +1,12 @@
 {
   "name": "sentineledge",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Zero-Latency Client-Side DLP Firewall Browser Extension",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && node scripts/fix-firefox-manifest.js",
-    "package": "npm run build && powershell -Command \"Compress-Archive -Path dist\\* -DestinationPath sentineledge-v2.0.0.zip -Force\"",
+    "package": "npm run build && powershell -Command \"Compress-Archive -Path dist\\* -DestinationPath sentineledge-v2.1.0.zip -Force\"",
     "test": "npx tsx src/core/dlp-engine.test.ts"
   },
   "devDependencies": {
