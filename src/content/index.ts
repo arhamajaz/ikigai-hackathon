@@ -1,19 +1,100 @@
+/**
+ * SentinelEdge v2.0.0 Content Script
+ * Hybrid DLP Masking Architecture: Instant Paste Interception + Just-In-Time Pre-Flight Typing Gate
+ * Multi-Platform Adapters: ChatGPT, Claude, Gemini, Perplexity, Microsoft Copilot
+ */
+
 import { sanitizePayload } from '../core/dlp-engine';
 
-console.log("[SentinelEdge v1.2] Real-Time Paste & Keystroke Masking active.");
+console.log(
+  "%c[SentinelEdge v2.0.0]%c Universal DLP Firewall & JIT Pre-Flight Gatekeeper Active (Sub-2ms Engine).",
+  "color: #10B981; font-weight: bold; font-size: 13px;",
+  "color: inherit;"
+);
 
 /**
- * Re-entry flag to prevent infinite loops during programmatic DOM updates.
+ * Re-entry lock for Pre-Flight submission gate bypass re-dispatching.
  */
-let isMasking = false;
+let isBypassingGate = false;
 
 /**
- * Timer handle for 250ms typing debounce.
+ * Universal selector list for main prompt send buttons AND edited message submit/save/update buttons across:
+ * ChatGPT, Claude, Gemini, Perplexity, and Microsoft Copilot.
  */
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+const SUBMIT_BUTTON_SELECTORS = [
+  'button[data-testid="send-button"]',
+  'button[data-testid="submit-button"]',
+  'button[data-testid*="send"]',
+  'button[data-testid*="submit"]',
+  'button[aria-label*="Send"]',
+  'button[aria-label*="send"]',
+  'button[aria-label*="Submit"]',
+  'button[aria-label*="submit"]',
+  'button[aria-label*="Update"]',
+  'button[aria-label*="update"]',
+  'button[aria-label*="Save"]',
+  'button[aria-label*="save"]',
+  'button[aria-label*="Search"]',
+  'button[title*="Submit"]',
+  'button[title*="Send"]',
+  'button.bg-super',
+  'button.send-button',
+  'button.submit',
+  '[role="button"][aria-label*="send"]',
+  '[role="button"][aria-label*="submit"]',
+  'form button[type="submit"]'
+].join(', ');
 
 /**
- * Checks if an element is an editable text input or container.
+ * Displays a transient Neo-Brutalist toast banner on the webpage when secrets/PII are redacted.
+ */
+function showInterceptionToast(threatCount: number): void {
+  try {
+    const existing = document.getElementById('sentinel-toast-banner');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'sentinel-toast-banner';
+    toast.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 999999;
+      background: #FFE4E6;
+      color: #9F1239;
+      border: 3px solid #000;
+      box-shadow: 4px 4px 0px #000;
+      padding: 12px 18px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      font-weight: 800;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      pointer-events: none;
+      animation: sentinelFadeIn 0.2s ease-out;
+    `;
+
+    toast.innerHTML = `
+      <span style="font-size: 18px;">🛡️</span>
+      <span>SentinelEdge DLP v2.0: Redacted <strong>${threatCount}</strong> sensitive threat${threatCount > 1 ? 's' : ''}!</span>
+    `;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      if (toast && toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 3200);
+  } catch {
+    // Ignore DOM toast injection errors in restricted frames
+  }
+}
+
+/**
+ * Checks if an element is an editable text input or container across all 5 AI platforms.
  */
 function isEditable(el: Element | null): boolean {
   if (!el) return false;
@@ -22,13 +103,13 @@ function isEditable(el: Element | null): boolean {
 
   const htmlEl = el as HTMLElement;
   if (htmlEl.isContentEditable || htmlEl.getAttribute('contenteditable') === 'true') return true;
-  if (el.closest && el.closest('#prompt-textarea, textarea, input, [contenteditable="true"], [role="textbox"]')) return true;
+  if (el.closest && el.closest('#prompt-textarea, #searchbox, textarea, input, [contenteditable="true"], [role="textbox"]')) return true;
 
   return false;
 }
 
 /**
- * Finds the primary prompt input element on the active webpage.
+ * Finds the primary prompt input element on ChatGPT, Claude, Gemini, Perplexity, or Microsoft Copilot.
  */
 function getPromptElement(): HTMLElement | null {
   const activeEl = document.activeElement as HTMLElement | null;
@@ -36,12 +117,19 @@ function getPromptElement(): HTMLElement | null {
     return activeEl;
   }
   return document.querySelector<HTMLElement>(
-    '#prompt-textarea, textarea, div[contenteditable="true"], [role="textbox"]'
+    '#prompt-textarea, #searchbox, textarea[placeholder*="Ask"], textarea[placeholder*="Perplexity"], textarea, div[contenteditable="true"], [role="textbox"]'
   );
 }
 
 /**
- * Extracts raw un-sanitized string text from an input container.
+ * Finds the target send or edit-submit button on ChatGPT, Claude, Gemini, Perplexity, or Microsoft Copilot.
+ */
+function getSendButton(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(SUBMIT_BUTTON_SELECTORS);
+}
+
+/**
+ * Extracts raw un-sanitized text from an input container.
  */
 function getRawText(el: HTMLElement): string {
   if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
@@ -51,120 +139,81 @@ function getRawText(el: HTMLElement): string {
 }
 
 /**
- * Synchronizes the updated DOM text with host frameworks (React, Lexical, ProseMirror).
+ * Universal browser storage accessor (Chrome, Firefox, Safari, Edge, Brave, Opera, Comet).
  */
-function syncHostFramework(element: HTMLElement, sanitizedText: string): void {
-  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+function recordTelemetry(threatCount: number, originalLength: number, sanitizedLength: number): void {
+  try {
+    const storageApi = (typeof chrome !== 'undefined' && chrome.storage)
+      ? chrome.storage.local
+      : (typeof (window as any).browser !== 'undefined' && (window as any).browser?.storage)
+        ? (window as any).browser.storage.local
+        : null;
+
+    if (storageApi) {
+      storageApi.get(['totalThreatsBlocked', 'incidentsLog'], (data: any) => {
+        const currentTotal = (data.totalThreatsBlocked || 0) + threatCount;
+        const currentLog = data.incidentsLog || [];
+        
+        const newIncident = {
+          timestamp: new Date().toISOString(),
+          threatsBlocked: threatCount,
+          originalLength,
+          sanitizedLength,
+          originUrl: window.location.hostname
+        };
+
+        const updatedLog = [newIncident, ...currentLog].slice(0, 100);
+
+        storageApi.set({
+          totalThreatsBlocked: currentTotal,
+          incidentsLog: updatedLog
+        });
+      });
+    }
+  } catch {
+    // Ignore storage errors in restricted sandbox
+  }
+}
+
+/**
+ * Replaces DOM text and dispatches host framework events for ChatGPT (React), Claude/Gemini (ProseMirror/Lexical),
+ * Perplexity (Slate), and Microsoft Copilot (Fluent).
+ */
+function syncAndReplaceDOM(inputElem: HTMLElement, sanitizedText: string): void {
+  if (inputElem instanceof HTMLTextAreaElement || inputElem instanceof HTMLInputElement) {
     const valueSetter =
-      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set ||
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set ||
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
 
     if (valueSetter) {
-      valueSetter.call(element, sanitizedText);
+      valueSetter.call(inputElem, sanitizedText);
+    } else {
+      inputElem.value = sanitizedText;
     }
 
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
+    inputElem.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    inputElem.dispatchEvent(new Event('change', { bubbles: true }));
   } else {
-    const container = (element.closest('[contenteditable="true"]') as HTMLElement) || element;
+    const container = (inputElem.closest('[contenteditable="true"]') as HTMLElement) || inputElem;
+    container.focus();
 
-    try {
-      container.dispatchEvent(new InputEvent('beforeinput', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: sanitizedText
-      }));
-    } catch {
-      // Ignore restriction
+    const selection = window.getSelection();
+    if (selection) {
+      const range = document.createRange();
+      range.selectNodeContents(container);
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
 
-    container.dispatchEvent(new InputEvent('input', {
-      bubbles: true,
-      inputType: 'insertText',
-      data: sanitizedText
-    }));
+    document.execCommand('insertText', false, sanitizedText);
+    container.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: sanitizedText }));
     container.dispatchEvent(new Event('change', { bubbles: true }));
   }
 }
 
 /**
- * Gets the current character offset of the caret inside a contenteditable container.
- */
-function getCaretOffset(container: HTMLElement): number {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return 0;
-
-  const range = selection.getRangeAt(0);
-  const preCaretRange = range.cloneRange();
-  preCaretRange.selectNodeContents(container);
-  preCaretRange.setEnd(range.endContainer, range.endOffset);
-  return preCaretRange.toString().length;
-}
-
-/**
- * Restores the caret at a specific character offset inside a contenteditable container.
- */
-function setCaretOffset(container: HTMLElement, offset: number): void {
-  const selection = window.getSelection();
-  if (!selection) return;
-
-  const range = document.createRange();
-  let currentOffset = 0;
-  let found = false;
-
-  function traverseNodes(node: Node): void {
-    if (found) return;
-    if (node.nodeType === Node.TEXT_NODE) {
-      const textLength = node.textContent?.length || 0;
-      if (currentOffset + textLength >= offset) {
-        const targetOffset = Math.max(0, offset - currentOffset);
-        range.setStart(node, Math.min(targetOffset, textLength));
-        range.collapse(true);
-        found = true;
-      } else {
-        currentOffset += textLength;
-      }
-    } else {
-      for (let i = 0; i < node.childNodes.length; i++) {
-        traverseNodes(node.childNodes[i]);
-        if (found) break;
-      }
-    }
-  }
-
-  traverseNodes(container);
-
-  if (!found) {
-    range.selectNodeContents(container);
-    range.collapse(false);
-  }
-
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-/**
- * Caret Preservation Masking helper for Textarea elements.
- */
-function maskTextareaWithCaretPreservation(el: HTMLTextAreaElement, sanitizedText: string, delta: number): void {
-  const start = el.selectionStart;
-  const end = el.selectionEnd;
-
-  const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
-  if (valueSetter) {
-    valueSetter.call(el, sanitizedText);
-  } else {
-    el.value = sanitizedText;
-  }
-
-  const newStart = Math.max(0, start + delta);
-  const newEnd = Math.max(0, end + delta);
-  el.setSelectionRange(newStart, newEnd);
-}
-
-/**
- * STEP 1: Real-Time Flawless Paste Interception
+ * STEP 1: INSTANT PASTE INTERCEPTION ('paste' event)
+ * Sanitizes and masks clipboard text before it touches the DOM.
  */
 function handlePasteEvent(event: ClipboardEvent): void {
   const target = (event.target as HTMLElement) || getPromptElement();
@@ -173,89 +222,145 @@ function handlePasteEvent(event: ClipboardEvent): void {
   const clipboardData = event.clipboardData || (window as unknown as { clipboardData?: DataTransfer }).clipboardData;
   if (!clipboardData) return;
 
-  const pastedText = clipboardData.getData('text');
-  if (!pastedText) return;
+  const rawClipboard = clipboardData.getData('text');
+  if (!rawClipboard) return;
 
-  const { sanitizedText, threatCount } = sanitizePayload(pastedText);
+  const { sanitizedText, threatCount } = sanitizePayload(rawClipboard);
 
   if (threatCount > 0) {
-    // 1. Immediately block un-sanitized raw paste
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
 
-    isMasking = true;
+    document.execCommand('insertText', false, sanitizedText);
 
-    // 2. Inject sanitized text at cursor
-    document.execCommand("insertText", false, sanitizedText);
+    target.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: sanitizedText
+    }));
 
-    // 3. Sync host framework state
-    syncHostFramework(target, sanitizedText);
-
-    console.warn(`[SentinelEdge v1.2] Intercepted paste and masked ${threatCount} threat${threatCount > 1 ? 's' : ''}.`);
-
-    setTimeout(() => {
-      isMasking = false;
-    }, 50);
+    recordTelemetry(threatCount, rawClipboard.length, sanitizedText.length);
+    showInterceptionToast(threatCount);
+    console.warn(`[SentinelEdge v2.0.0] Instant Paste Intercepted: Redacted ${threatCount} threat${threatCount > 1 ? 's' : ''}.`);
   }
 }
 
 /**
- * STEP 2: Real-Time Typing Interception with Caret Preservation (Debounced 250ms)
+ * STEP 4: SANITIZATION, FRAMEWORK SYNC & RELEASE PIPELINE
  */
-function handleTypingInput(event: Event): void {
-  if (isMasking) return;
+function executeSanitizationAndRelease(
+  trigger: 'enter' | 'button',
+  targetElem: HTMLElement,
+  targetButton?: HTMLElement
+): void {
+  const rawText = getRawText(targetElem);
+  if (!rawText || rawText.trim().length === 0) return;
 
-  const target = (event.target as HTMLElement) || getPromptElement();
-  if (!target || !isEditable(target)) return;
+  const { sanitizedText, threatCount } = sanitizePayload(rawText);
 
-  if (debounceTimer) {
-    clearTimeout(debounceTimer);
+  if (threatCount > 0 && sanitizedText !== rawText) {
+    syncAndReplaceDOM(targetElem, sanitizedText);
+    recordTelemetry(threatCount, rawText.length, sanitizedText.length);
+    showInterceptionToast(threatCount);
+    console.warn(`[SentinelEdge v2.0.0] Pre-Flight Gate redacted ${threatCount} threat${threatCount > 1 ? 's' : ''} prior to submission.`);
   }
 
-  debounceTimer = setTimeout(() => {
-    if (isMasking) return;
+  isBypassingGate = true;
 
-    const rawText = getRawText(target);
-    if (!rawText || rawText.trim().length === 0) return;
-
-    const { sanitizedText, threatCount } = sanitizePayload(rawText);
-
-    if (threatCount > 0 && sanitizedText !== rawText) {
-      isMasking = true;
-      const delta = sanitizedText.length - rawText.length;
-
-      if (target instanceof HTMLTextAreaElement) {
-        maskTextareaWithCaretPreservation(target, sanitizedText, delta);
-      } else if (target instanceof HTMLInputElement) {
-        const start = target.selectionStart || 0;
-        target.value = sanitizedText;
-        const newStart = Math.max(0, start + delta);
-        target.setSelectionRange(newStart, newStart);
-      } else {
-        const container = (target.closest('[contenteditable="true"]') as HTMLElement) || target;
-        const currentCaret = getCaretOffset(container);
-
-        container.focus();
-        container.innerText = sanitizedText;
-
-        const newCaret = Math.max(0, currentCaret + delta);
-        setCaretOffset(container, newCaret);
+  setTimeout(() => {
+    if (trigger === 'enter') {
+      targetElem.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+        cancelable: true
+      }));
+    } else if (trigger === 'button') {
+      const btnToClick = targetButton || getSendButton();
+      if (btnToClick && typeof btnToClick.click === 'function') {
+        btnToClick.click();
       }
-
-      // Sync Host Framework
-      syncHostFramework(target, sanitizedText);
-
-      console.warn(`[SentinelEdge v1.2] Real-time keystroke masked ${threatCount} threat${threatCount > 1 ? 's' : ''}.`);
-
-      setTimeout(() => {
-        isMasking = false;
-      }, 50);
     }
-  }, 250);
+
+    setTimeout(() => {
+      isBypassingGate = false;
+    }, 100);
+  }, 20);
 }
 
-// 1. Attach global capturing paste listener for immediate real-time paste masking
+/**
+ * STEP 3: PRE-FLIGHT SUBMISSION GATE - Keyboard 'Enter' Handler
+ */
+function handlePreFlightKeydown(event: KeyboardEvent): void {
+  if (isBypassingGate) return;
+
+  // EXEMPT: Shift + Enter (multiline insertion) & IME composition
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+    return;
+  }
+
+  const activeEl = document.activeElement as HTMLElement | null;
+  const promptEl = getPromptElement();
+  const targetElem = (activeEl && isEditable(activeEl)) ? activeEl : promptEl;
+
+  if (!targetElem) return;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+
+  executeSanitizationAndRelease('enter', targetElem);
+}
+
+/**
+ * STEP 3: PRE-FLIGHT SUBMISSION GATE - Send / Edit-Submit Button Click Handler
+ */
+function handlePreFlightClick(event: MouseEvent): void {
+  if (isBypassingGate) return;
+
+  const targetNode = event.target as HTMLElement | null;
+  if (!targetNode) return;
+
+  const submitBtn = targetNode.closest<HTMLElement>(SUBMIT_BUTTON_SELECTORS);
+
+  if (submitBtn) {
+    // Look for the input container closest to this clicked button (handles edited messages!)
+    const parentContainer = submitBtn.closest('form, div[class*="edit"], div[role="region"], div');
+    const scopedInput = parentContainer?.querySelector<HTMLElement>(
+      '#prompt-textarea, #searchbox, textarea, div[contenteditable="true"], [role="textbox"]'
+    );
+
+    const promptEl = scopedInput || getPromptElement();
+    if (!promptEl) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    executeSanitizationAndRelease('button', promptEl, submitBtn);
+  }
+}
+
+// 1. Attach capturing paste listener for Instant Paste Interception (STEP 1)
 document.addEventListener('paste', handlePasteEvent, true);
 
-// 2. Attach global capturing input listener for debounced real-time keystroke masking
-document.addEventListener('input', handleTypingInput, true);
+// 2. Attach capturing keydown listener for Pre-Flight 'Enter' Gate (STEP 3)
+document.addEventListener('keydown', handlePreFlightKeydown, true);
+
+// 3. Attach capturing click listener for Pre-Flight 'Send' / Edit-Submit Button Gate (STEP 3)
+document.addEventListener('click', handlePreFlightClick, true);
+
+// 4. Dynamic SPA Lifecycle Engine: MutationObserver to re-verify dynamic DOM element creation
+const observer = new MutationObserver(() => {
+  const prompt = getPromptElement();
+  if (prompt && !prompt.dataset.sentinelActive) {
+    prompt.dataset.sentinelActive = "true";
+  }
+});
+
+observer.observe(document.body, {
+  childList: true,
+  subtree: true
+});

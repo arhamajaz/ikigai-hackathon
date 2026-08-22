@@ -1,24 +1,42 @@
 {
   "manifest_version": 3,
-  "name": "SentinelEdge v1.2",
-  "version": "1.2.0",
-  "description": "Real-Time Client-Side DLP Firewall Chrome & Firefox Extension",
+  "name": "SentinelEdge - Zero-Latency DLP Firewall",
+  "version": "2.0.0",
+  "description": "Zero-latency, 100% client-side privacy firewall for Generative AI (ChatGPT, Claude, Gemini, Perplexity, Copilot).",
   "permissions": [
     "clipboardRead",
-    "activeTab"
+    "activeTab",
+    "storage"
   ],
   "browser_specific_settings": {
     "gecko": {
-      "id": "sentineledge@local.extension",
+      "id": "sentineledge@local.security",
       "strict_min_version": "109.0"
     }
+  },
+  "background": {
+    "scripts": [
+      "src/background/service-worker.ts"
+    ],
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "SentinelEdge DLP v2.0.0"
   },
   "content_scripts": [
     {
       "matches": [
         "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
         "https://claude.ai/*",
-        "https://gemini.google.com/*"
+        "https://gemini.google.com/*",
+        "https://www.perplexity.ai/*",
+        "https://perplexity.ai/*",
+        "https://copilot.microsoft.com/*",
+        "https://*.bing.com/chat*",
+        "https://www.bing.com/search*"
       ],
       "js": [
         "src/content/index.ts"

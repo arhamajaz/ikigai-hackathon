@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SentinelEdge DLP HUD</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="hud-container">
+    <header class="hud-header">
+      <div class="brand">
+        <span class="logo-badge">🛡️</span>
+        <h1>SENTINEL<span>EDGE</span></h1>
+        <span class="version-tag">v2.0.0</span>
+      </div>
+      <div class="status-pill active" id="statusPill">ACTIVE</div>
+    </header>
+
+    <main class="hud-body">
+      <section class="stat-card">
+        <span class="stat-label">TOTAL THREATS REDACTED</span>
+        <div class="stat-value" id="totalThreats">0</div>
+      </section>
+
+      <section class="control-panel">
+        <label class="toggle-container">
+          <input type="checkbox" id="toggleProtection" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Real-Time DLP Shield</span>
+        </label>
+      </section>
+
+      <section class="incidents-section">
+        <h3>RECENT INCIDENTS LOG</h3>
+        <div class="incidents-list" id="incidentsList">
+          <div class="empty-state">No sensitive threats detected yet.</div>
+        </div>
+      </section>
+
+      <footer class="hud-footer">
+        <button id="exportLogBtn" class="btn btn-primary">Export JSON Log</button>
+        <button id="clearLogBtn" class="btn btn-secondary">Clear Ledger</button>
+      </footer>
+    </main>
+  </div>
+  <script type="module" src="popup.ts"></script>
+</body>
+</html>
