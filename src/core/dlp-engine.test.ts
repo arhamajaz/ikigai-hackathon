@@ -230,7 +230,7 @@ console.log("--------------------------------------------------");
 console.log(`Summary: ${passed} passed, ${failed} failed out of ${testCases.length} tests.`);
 console.log("--------------------------------------------------\n");
 
-// --- SECTION 3: BENCHMARK SUITE (SUB-2MS BUDGET ENFORCEMENT) ---
+// --- SECTION 3: BENCHMARK SUITE (SUB-2MS BUDGET ENFORCEMENT & 5,000 CHAR / 10 KEYS SPEC) ---
 console.log("==================================================");
 console.log("   SentinelEdge Sub-2ms Latency Benchmarking");
 console.log("==================================================\n");
@@ -247,30 +247,37 @@ const mediumPrompt = `
   };
 `;
 
-let largePayload = "function auditEngine() {\n";
-for (let i = 0; i < 50; i++) {
-  largePayload += `  // Line ${i}: System initialization with config parameters and data parsing logic.\n`;
-}
-largePayload += `  const secretKey = "${s(["sk-proj-", "1234567890abcdef1234567890"])}";\n`;
-largePayload += `  const slackTok = "${s(["xo", "xb-123456789012-123456789012-abcdefghijklmnopqrstuvwx"])}";\n`;
-largePayload += `  const twilioKey = "${s(["S", "K0123456789abcdef0123456789abcdef"])}";\n`;
-largePayload += '  const connString = "mongodb+srv://admin:pass123@cluster.mongodb.net/prod";\n';
-largePayload += '  const supportPhone = "+1 (555) 019-2834";\n';
-for (let i = 50; i < 100; i++) {
-  largePayload += `  // Line ${i}: Executing telemetry and data loss prevention verification steps.\n`;
-}
-largePayload += "}\n";
+let payload5000With10Keys = "/* System Configuration File - Enterprise Production Deployment */\n";
+payload5000With10Keys += `const awsKey = "${s(["AKIA", "IOSFODNN7EXAMPLE"])}";\n`;
+for (let i = 0; i < 20; i++) { payload5000With10Keys += `// Line ${i}: Data processing, telemetry parsing, and pipeline initialization steps.\n`; }
+payload5000With10Keys += `const openAIKey = "${s(["sk-proj-", "1234567890abcdef1234567890"])}";\n`;
+for (let i = 20; i < 40; i++) { payload5000With10Keys += `// Line ${i}: Data processing, telemetry parsing, and pipeline initialization steps.\n`; }
+payload5000With10Keys += `const githubToken = "${s(["ghp_", "1234567890abcdefghijklmnopqrstuvwxyz"])}";\n`;
+for (let i = 40; i < 60; i++) { payload5000With10Keys += `// Line ${i}: Data processing, telemetry parsing, and pipeline initialization steps.\n`; }
+payload5000With10Keys += `const slackHook = "${s(["https://hooks.slack.", "com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"])}";\n`;
+for (let i = 60; i < 80; i++) { payload5000With10Keys += `// Line ${i}: Data processing, telemetry parsing, and pipeline initialization steps.\n`; }
+payload5000With10Keys += `const slackBot = "${s(["xo", "xb-123456789012-123456789012-abcdefghijklmnopqrstuvwx"])}";\n`;
+for (let i = 80; i < 100; i++) { payload5000With10Keys += `// Line ${i}: Data processing, telemetry parsing, and pipeline initialization steps.\n`; }
+payload5000With10Keys += `const mailgunKey = "${s(["ke", "y-0123456789abcdef0123456789abcdef"])}";\n`;
+for (let i = 100; i < 120; i++) { payload5000With10Keys += `// Line ${i}: Data processing, telemetry parsing, and pipeline initialization steps.\n`; }
+payload5000With10Keys += `const twilioKey = "${s(["S", "K0123456789abcdef0123456789abcdef"])}";\n`;
+for (let i = 120; i < 140; i++) { payload5000With10Keys += `// Line ${i}: Data processing, telemetry parsing, and pipeline initialization steps.\n`; }
+payload5000With10Keys += `const sendGridKey = "${s(["S", "G.1234567890123456789012.1234567890123456789012345678901234567890123"])}";\n`;
+for (let i = 140; i < 160; i++) { payload5000With10Keys += `// Line ${i}: Data processing, telemetry parsing, and pipeline initialization steps.\n`; }
+payload5000With10Keys += `const googleKey = "${s(["AI", "zaSyD123456789012345678901234567890ab"])}";\n`;
+for (let i = 160; i < 180; i++) { payload5000With10Keys += `// Line ${i}: Data processing, telemetry parsing, and pipeline initialization steps.\n`; }
+payload5000With10Keys += `const dbUri = "postgresql://admin:secret123@db.example.com:5432/main";\n`;
 
 const benchmarks = [
   { name: "Short Prompt (~60 chars)", input: shortPrompt },
   { name: "Medium Config Code (~350 chars)", input: mediumPrompt },
-  { name: "Large Code Payload (8,500 chars)", input: largePayload }
+  { name: "5,000 Chars + 10 Interspersed Keys Benchmark", input: payload5000With10Keys }
 ];
 
 let allSub2ms = true;
 
 for (const b of benchmarks) {
-  sanitizePayload(b.input);
+  sanitizePayload(b.input); // Warmup run
 
   const iterations = 50;
   let totalTime = 0;
@@ -278,7 +285,7 @@ for (const b of benchmarks) {
 
   for (let i = 0; i < iterations; i++) {
     const t0 = performance.now();
-    sanitizePayload(b.input);
+    const result = sanitizePayload(b.input);
     const dt = performance.now() - t0;
     totalTime += dt;
     if (dt > maxTime) maxTime = dt;
@@ -292,7 +299,7 @@ for (const b of benchmarks) {
   console.log(`  Payload Length : ${b.input.length} characters`);
   console.log(`  Avg Scan Time  : ${avgTime.toFixed(3)} ms`);
   console.log(`  Max Scan Time  : ${maxTime.toFixed(3)} ms`);
-  console.log(`  Budget Status  : ${isBudgetPassed ? '✓ PASS (<= 2.0ms)' : '✗ FAIL (> 2.0ms)'}\n`);
+  console.log(`  Budget Status  : ${isBudgetPassed ? '✓ PASS (<= 2.00ms)' : '✗ FAIL (> 2.00ms)'}\n`);
 }
 
 if (failed > 0 || !allSub2ms) {
