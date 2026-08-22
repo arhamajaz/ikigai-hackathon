@@ -2,10 +2,14 @@
  * SentinelEdge v2.1.0 Content Script
  * Hybrid DLP Masking Architecture: Instant Paste Interception + Just-In-Time Pre-Flight Typing Gate
  * Multi-Platform Adapters: ChatGPT, Claude, Gemini, Perplexity, Microsoft Copilot
- * Expanded DLP Lexicon: Keyhacks + Git-Leaks Signatures
+ * Features:
+ *  - 200ms Promise.race() hard latency budget timeout
+ *  - Graceful Fallback for Unsupported Browsers (Firefox, Safari, Edge, Unsupported Chrome)
+ *  - 500ms Debounced Background Pre-Scanning (Latency Hiding with 0.1ms Cache Lookup)
  */
 
 import { sanitizePayload } from '../core/dlp-engine';
+import { executeAiRegexHandshake, scanSemanticSecrets, cacheSemanticSecret } from '../core/semantic-ai';
 
 console.log(
   "%c[SentinelEdge v2.1.0]%c Universal DLP Firewall & JIT Pre-Flight Gatekeeper Active (Sub-2ms Engine).",
@@ -17,6 +21,11 @@ console.log(
  * Re-entry lock for Pre-Flight submission gate bypass re-dispatching.
  */
 let isBypassingGate = false;
+
+/**
+ * Debounce timer handle for background pre-scanning while typing.
+ */
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Universal selector list for main prompt send buttons AND edited message submit/save/update buttons across:
@@ -249,17 +258,46 @@ function handlePasteEvent(event: ClipboardEvent): void {
 }
 
 /**
+ * STEP 3 (LATENCY HIDING): DEBOUNCED BACKGROUND PRE-SCANNING AS USER TYPES (500ms)
+ * Silently scans text as user pauses typing; caches results so Pre-Flight gate lookup takes 0.1ms.
+ */
+function handleInputDebounced(event: Event): void {
+  const target = event.target as HTMLElement | null;
+  if (!target || !isEditable(target)) return;
+
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+  }
+
+  const rawText = getRawText(target);
+  if (!rawText || rawText.trim().length < 5) return;
+
+  debounceTimer = setTimeout(() => {
+    scanSemanticSecrets(rawText).then((result) => {
+      if (result.isSecret && result.semanticThreats.length > 0) {
+        for (const threat of result.semanticThreats) {
+          cacheSemanticSecret(rawText, threat);
+        }
+      }
+    }).catch(() => {
+      // Ignore background AI pre-scan errors silently
+    });
+  }, 500);
+}
+
+/**
  * STEP 4: SANITIZATION, FRAMEWORK SYNC & RELEASE PIPELINE
  */
-function executeSanitizationAndRelease(
+async function executeSanitizationAndRelease(
   trigger: 'enter' | 'button',
   targetElem: HTMLElement,
   targetButton?: HTMLElement
-): void {
+): Promise<void> {
   const rawText = getRawText(targetElem);
   if (!rawText || rawText.trim().length === 0) return;
 
-  const { sanitizedText, threatCount } = sanitizePayload(rawText);
+  // Execute AI / Regex Handshake with 200ms Promise.race() timeout budget & 0.1ms cache lookup
+  const { sanitizedText, threatCount } = await executeAiRegexHandshake(rawText, 200);
 
   if (threatCount > 0 && sanitizedText !== rawText) {
     syncAndReplaceDOM(targetElem, sanitizedText);
@@ -294,7 +332,7 @@ function executeSanitizationAndRelease(
 }
 
 /**
- * STEP 3: PRE-FLIGHT SUBMISSION GATE - Keyboard 'Enter' Handler
+ * PRE-FLIGHT SUBMISSION GATE - Keyboard 'Enter' Handler
  */
 function handlePreFlightKeydown(event: KeyboardEvent): void {
   if (isBypassingGate) return;
@@ -317,7 +355,7 @@ function handlePreFlightKeydown(event: KeyboardEvent): void {
 }
 
 /**
- * STEP 3: PRE-FLIGHT SUBMISSION GATE - Send / Edit-Submit Button Click Handler
+ * PRE-FLIGHT SUBMISSION GATE - Send / Edit-Submit Button Click Handler
  */
 function handlePreFlightClick(event: MouseEvent): void {
   if (isBypassingGate) return;
@@ -328,7 +366,6 @@ function handlePreFlightClick(event: MouseEvent): void {
   const submitBtn = targetNode.closest<HTMLElement>(SUBMIT_BUTTON_SELECTORS);
 
   if (submitBtn) {
-    // Look for the input container closest to this clicked button (handles edited messages!)
     const parentContainer = submitBtn.closest('form, div[class*="edit"], div[role="region"], div');
     const scopedInput = parentContainer?.querySelector<HTMLElement>(
       '#prompt-textarea, #searchbox, textarea, div[contenteditable="true"], [role="textbox"]'
@@ -344,16 +381,19 @@ function handlePreFlightClick(event: MouseEvent): void {
   }
 }
 
-// 1. Attach capturing paste listener for Instant Paste Interception (STEP 1)
+// 1. Attach capturing paste listener for Instant Paste Interception
 document.addEventListener('paste', handlePasteEvent, true);
 
-// 2. Attach capturing keydown listener for Pre-Flight 'Enter' Gate (STEP 3)
+// 2. Attach capturing input listener for 500ms Debounced Background Pre-Scanning
+document.addEventListener('input', handleInputDebounced, true);
+
+// 3. Attach capturing keydown listener for Pre-Flight 'Enter' Gate
 document.addEventListener('keydown', handlePreFlightKeydown, true);
 
-// 3. Attach capturing click listener for Pre-Flight 'Send' / Edit-Submit Button Gate (STEP 3)
+// 4. Attach capturing click listener for Pre-Flight 'Send' / Edit-Submit Button Gate
 document.addEventListener('click', handlePreFlightClick, true);
 
-// 4. Dynamic SPA Lifecycle Engine: MutationObserver to re-verify dynamic DOM element creation
+// 5. Dynamic SPA Lifecycle Engine: MutationObserver to re-verify dynamic DOM element creation
 const observer = new MutationObserver(() => {
   const prompt = getPromptElement();
   if (prompt && !prompt.dataset.sentinelActive) {
