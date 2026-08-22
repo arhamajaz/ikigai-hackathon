@@ -169,12 +169,12 @@ export async function scanForSemanticSecrets(text: string): Promise<string[]> {
       if (parsed.found) {
         if (Array.isArray(parsed.secrets)) {
           for (const s of parsed.secrets) {
-            if (s && typeof s === 'string' && text.includes(s)) {
+            if (s && typeof s === 'string' && text.includes(s) && !s.includes("[REDACTED_")) {
               foundSecrets.push(s);
             }
           }
         }
-        if (parsed.secret && typeof parsed.secret === 'string' && text.includes(parsed.secret)) {
+        if (parsed.secret && typeof parsed.secret === 'string' && text.includes(parsed.secret) && !parsed.secret.includes("[REDACTED_")) {
           foundSecrets.push(parsed.secret);
         }
       }
@@ -201,26 +201,26 @@ export async function scanForSemanticSecrets(text: string): Promise<string[]> {
 export function fallbackSemanticHeuristicsList(text: string): string[] {
   // Safe Contexts: General technical questions asking 'how to' or 'what is' without value assignments
   const isSafeContextQuestion = /\b(?:how\s+(?:to|can\s+i|do\s+i|should\s+i)|difference\s+between|what\s+is|explain|tutorial|documentation|syntax)\b/i.test(text) &&
-    !/\b(?:is|=|:)\s+['"]?[a-zA-Z0-9_!@#$%^&*-]{3,}/i.test(text);
+    !/\b(?:is|=|:)\s+['"]?[a-zA-Z0-9_!@#$%^&*\-]{3,}/i.test(text);
   if (isSafeContextQuestion) {
     return [];
   }
 
   const semanticPatterns = [
     // Multi-Word Passphrase (e.g. 'my passphrase is correct horse battery staple')
-    /(?:\b(?:my|our|the)\s+(?:passphrase|secret\s+passphrase)\s+is\s+['"]?)([a-zA-Z0-9_\s-]{8,80}?)(?=['"]?(?:[\s,;.]|$|\b(?:for|to|whenever|when|with)\b))/gi,
+    /(?:\b(?:my|our|the)\s+(?:passphrase|secret\s+passphrase)\s+is\s+['"]?)([a-zA-Z0-9_\s\-]{8,80}?)(?=['"]?(?:[\s,;.]|$|\b(?:for|to|whenever|when|with)\b))/gi,
     // Security answer (e.g. 'security answer is fluffy_dog_123')
-    /(?:\b(?:security\s+answer|security\s+response)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{3,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    /(?:\b(?:security\s+answer|security\s+response)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*\-]{3,64})(?=['"]?(?:[\s,;.]|$))/gi,
     // Override code, bypass code, paywall code, QA code
-    /(?:\b(?:override\s+code|bypass\s+code|paywall\s+code|access\s+code|testing\s+code|secret\s+code)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    /(?:\b(?:override\s+code|bypass\s+code|paywall\s+code|access\s+code|testing\s+code|secret\s+code)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*\-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
     // Master password, backdoor login, database password, secret token, passcode, auth token
-    /(?:\b(?:master\s+password|backdoor\s+login|staging\s+password|database\s+password|admin\s+password|root\s+password|root\s+passcode|passcode|secret\s+key|access\s+key|auth\s+token|secret\s+token)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    /(?:\b(?:master\s+password|backdoor\s+login|staging\s+password|database\s+password|admin\s+password|root\s+password|root\s+passcode|passcode|secret\s+key|access\s+key|auth\s+token|secret\s+token)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*\-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
     // Action verbs followed by tokens (type in X, enter X, use X)
-    /(?:\b(?:type\s+in|enter|use|input)\s+['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?\s+(?:whenever|when|for|as|if|to|in|into|on|at|with)\b[\s\S]{0,40}?\b(?:passphrase|password|secret|key|token|credential|login|ssh|bastion|auth|code|paywall|override)\b)/gi,
+    /(?:\b(?:type\s+in|enter|use|input)\s+['"]?)([a-zA-Z0-9_!@#$%^&*\-]{4,64})(?=['"]?\s+(?:whenever|when|for|as|if|to|in|into|on|at|with)\b[\s\S]{0,40}?\b(?:passphrase|password|secret|key|token|credential|login|ssh|bastion|auth|code|paywall|override)\b)/gi,
     // Declarations: the secret is X, the password is X
-    /(?:\b(?:the|my|our)\s+(?:secret|password|access\s*key|passcode|root\s+passcode|override\s*code|master\s+password)\s+is\s+['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    /(?:\b(?:the|my|our)\s+(?:secret|password|access\s*key|passcode|root\s+passcode|override\s*code|master\s+password)\s+is\s+['"]?)([a-zA-Z0-9_!@#$%^&*\-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
     // Generic fallback for backdoor/admin passwords
-    /\b(?:backdoor|admin|root|login|passcode|secret|password|access\s*key)[\s\S]{0,45}?\b(?:is|=|:)\s+['"]?([a-zA-Z0-9_!@#$%^&*]{4,32})['"]?/gi
+    /\b(?:backdoor|admin|root|login|passcode|secret|password|access\s*key)[\s\S]{0,45}?\b(?:is|=|:)\s+['"]?([a-zA-Z0-9_!@#$%^&*\-]{4,32})['"]?/gi
   ];
 
   const secrets: string[] = [];
@@ -230,7 +230,7 @@ export function fallbackSemanticHeuristicsList(text: string): string[] {
     while ((match = pat.exec(text)) !== null) {
       if (match[1] && text.includes(match[1])) {
         const rawSecret = match[1].trim();
-        if (rawSecret.length >= 3) {
+        if (rawSecret.length >= 3 && !rawSecret.startsWith("[REDACTED_") && !rawSecret.includes("[REDACTED_")) {
           secrets.push(rawSecret);
         }
       }
@@ -271,7 +271,7 @@ export async function executeAiRegexHandshake(rawText: string): Promise<Handshak
     const detectedSecrets = await scanForSemanticSecrets(sanitizedText);
 
     for (const secret of detectedSecrets) {
-      if (secret && secret.trim().length > 0 && sanitizedText.includes(secret)) {
+      if (secret && secret.trim().length > 0 && !secret.includes("[REDACTED_") && sanitizedText.includes(secret)) {
         // Safely replace the exact sensitive substring
         sanitizedText = sanitizedText.replaceAll(secret, '[REDACTED_SEMANTIC_SECRET]');
         threatCount++;

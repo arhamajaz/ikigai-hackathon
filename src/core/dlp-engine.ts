@@ -174,19 +174,19 @@ export const DLP_RULES: readonly DlpRule[] = [
   // --- FAST-PATH PROSE CREDENTIALS & CONTEXTUAL SECRETS ---
   {
     id: "PASSPHRASE_PROSE",
-    pattern: /(?:\b(?:type\s+in|enter|use|input)\s+['"]?)([a-zA-Z0-9_-]{4,64})(?=['"]?\s+(?:whenever|when|for|as|if|to|in|into|on|at|with)\b[\s\S]{0,40}?\b(?:passphrase|password|secret|key|token|credential|login|ssh|bastion|auth|code|paywall|override)\b)/gi,
+    pattern: /(?:\b(?:type\s+in|enter|use|input)\s+['"]?)([a-zA-Z0-9_\-]{4,64})(?=['"]?\s+(?:whenever|when|for|as|if|to|in|into|on|at|with)\b[\s\S]{0,40}?\b(?:passphrase|password|secret|key|token|credential|login|ssh|bastion|auth|code|paywall|override)\b)/gi,
     mask: "[REDACTED_SEMANTIC_SECRET]",
     needsContext: false
   },
   {
     id: "OVERRIDE_CODE_PROSE",
-    pattern: /(?:\b(?:override\s+code|bypass\s+code|paywall\s+code|access\s+code)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    pattern: /(?:\b(?:override\s+code|bypass\s+code|paywall\s+code|access\s+code)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*\-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
     mask: "[REDACTED_SEMANTIC_SECRET]",
     needsContext: false
   },
   {
     id: "MASTER_PASSWORD_PROSE",
-    pattern: /(?:\b(?:master\s+password|backdoor\s+login|staging\s+password|database\s+password)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    pattern: /(?:\b(?:master\s+password|backdoor\s+login|staging\s+password|database\s+password)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*\-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
     mask: "[REDACTED_SEMANTIC_SECRET]",
     needsContext: false
   },
@@ -298,7 +298,7 @@ export const DLP_RULES: readonly DlpRule[] = [
   // --- UNIVERSAL FALLBACK KEY-VALUE ASSIGNMENT REDACTION ENGINE ---
   {
     id: "GENERIC_KEY_VALUE_FALLBACK",
-    pattern: /(?:\b[a-zA-Z0-9_-]*(?:key|secret|token|password|passwd|pass|auth|credential)[a-zA-Z0-9_-]*\b[\s]*[:=][\s]*['"]?)([a-zA-Z0-9_.\/+=~-]{8,128})(?=['"]?(?:[\s,;}\n]|$))/gi,
+    pattern: /(?:\b[a-zA-Z0-9_-]*(?:key|secret|token|password|passwd|pass|auth|credential)[a-zA-Z0-9_-]*\b[\s]*[:=][\s]*['"]?)([a-zA-Z0-9_.\/+=~\-]{8,128})(?=['"]?(?:[\s,;}\n]|$))/gi,
     mask: "[REDACTED_SENSITIVE_SECRET]",
     needsContext: false
   },
@@ -409,9 +409,14 @@ export function sanitizePayload(rawText: string): SanitizationResult {
       }
 
       if ((rule.id === "GENERIC_KEY_VALUE_FALLBACK" || rule.id === "PASSPHRASE_PROSE" || rule.id === "OVERRIDE_CODE_PROSE" || rule.id === "MASTER_PASSWORD_PROSE") && match[1]) {
-        // Replace only the captured sensitive value, keeping assignment key or prose prefix intact
         const fullMatchStr = match[0];
         const secretVal = match[1];
+
+        // Never re-match or replace already redacted placeholders
+        if (secretVal.startsWith("[REDACTED_")) {
+          continue;
+        }
+
         const valIndex = match.index + fullMatchStr.lastIndexOf(secretVal);
         validMatches.push({
           index: valIndex,
