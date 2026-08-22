@@ -1,11 +1,11 @@
 /**
- * SentinelEdge v2.1 - Local Gemini Nano Semantic AI DLP Engine
+ * SentinelEdge v2.2 - Local Gemini Nano Semantic AI DLP Engine
  * Integrates Chrome's Built-in Prompt API (window.ai.languageModel)
  * 100% Air-Gapped On-Device Processing (0 Cloud Calls)
  * Features:
  *  - 200ms Promise.race() hard latency budget timeout
  *  - Graceful fallback for unsupported browsers (Firefox, Safari, Edge, mobile)
- *  - 500ms debounced background pre-scanning with 0.1ms cache lookup
+ *  - Debounced background pre-scanning with 0.1ms cache lookup
  */
 
 import { sanitizePayload, SanitizationResult } from './dlp-engine';
@@ -85,7 +85,7 @@ export async function checkGeminiNanoAvailability(): Promise<boolean> {
 
 /**
  * Stateful Session Creation (.create)
- * Bootstraps a single persistent Gemini Nano session with a constrained system prompt.
+ * Bootstraps a single persistent Gemini Nano session with a constrained DLP extraction system prompt.
  */
 export async function getOrCreateAiSession(): Promise<LanguageModelSession | null> {
   if (activeAiSession) return activeAiSession;
@@ -100,7 +100,7 @@ export async function getOrCreateAiSession(): Promise<LanguageModelSession | nul
     }
 
     activeAiSession = await aiObj.languageModel.create({
-      systemPrompt: "You are a data privacy analyzer. Does this text contain a hidden password or secret? Answer yes or no."
+      systemPrompt: "You are an AI Data Loss Prevention agent. Identify any sensitive password, override code, secret key, passcode, or backdoor token in the user text. Reply ONLY with the extracted secret token(s) separated by commas. If no sensitive secret is found, reply NONE."
     });
 
     isInitializing = false;
@@ -127,17 +127,27 @@ export async function scanSemanticSecrets(text: string): Promise<SemanticScanRes
 
   try {
     const rawResponse = await session.prompt(text);
+    const cleanedResponse = rawResponse.trim();
 
-    if (rawResponse.toLowerCase().includes('yes') || rawResponse.toLowerCase().includes('true')) {
+    if (cleanedResponse && !cleanedResponse.toLowerCase().includes('none')) {
+      const extractedTokens = cleanedResponse
+        .split(/[\s,]+/)
+        .map(t => t.replace(/^['"]|['"]$/g, ''))
+        .filter(t => t.length >= 3 && text.includes(t));
+
       const heuristics = fallbackSemanticHeuristics(text);
-      return {
-        isSecret: true,
-        semanticThreats: heuristics.semanticThreats.length > 0 ? heuristics.semanticThreats : [text],
-        explanation: "Gemini Nano on-device model confirmed hidden secret."
-      };
+      const combinedThreats = Array.from(new Set([...extractedTokens, ...heuristics.semanticThreats]));
+
+      if (combinedThreats.length > 0) {
+        return {
+          isSecret: true,
+          semanticThreats: combinedThreats,
+          explanation: "Gemini Nano on-device model extracted semantic secret tokens."
+        };
+      }
     }
 
-    return { isSecret: false, semanticThreats: [], explanation: "Clean" };
+    return fallbackSemanticHeuristics(text);
   } catch {
     return fallbackSemanticHeuristics(text);
   }
@@ -146,12 +156,18 @@ export async function scanSemanticSecrets(text: string): Promise<SemanticScanRes
 /**
  * Fallback semantic heuristic engine for environments where Gemini Nano model is downloading or unavailable.
  */
-function fallbackSemanticHeuristics(text: string): SemanticScanResult {
+export function fallbackSemanticHeuristics(text: string): SemanticScanResult {
   const semanticPatterns = [
-    /\b(?:enter|use|type|input)\s+['"]?([a-zA-Z0-9_-]{4,64})['"]?\s+(?:whenever|when|for|as)\s+(?:prompted|the|a)?\s*(?:passphrase|password|secret|key|token|credential)/gi,
-    /\b(?:passphrase|password|passcode|secret|access\s*key|auth\s*token)\s*(?:is|=|:|\s)\s*['"]?([a-zA-Z0-9_-]{4,64})['"]?/gi,
-    /\b(?:backdoor|admin|root|login|passcode|secret|password|access\s*key)[\s\S]{0,45}?\b(?:is|=|:)\s+['"]?([a-zA-Z0-9_!@#$%^&*]{4,32})['"]?/gi,
-    /\b(?:the|my|our)\s+(?:secret|password|access\s*key)\s+is\s+['"]?([a-zA-Z0-9_!@#$%^&*]{4,32})['"]?/gi
+    // Override code, bypass code, paywall code, QA code
+    /(?:\b(?:override\s+code|bypass\s+code|paywall\s+code|access\s+code|testing\s+code|secret\s+code)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    // Master password, backdoor login, database password
+    /(?:\b(?:master\s+password|backdoor\s+login|staging\s+password|database\s+password|admin\s+password|root\s+password|secret\s+key|access\s+key|auth\s+token)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    // Action verbs followed by tokens (type in X, enter X, use X)
+    /(?:\b(?:type\s+in|enter|use|input)\s+['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?\s+(?:whenever|when|for|as|if|to|in|into|on|at|with)\b[\s\S]{0,40}?\b(?:passphrase|password|secret|key|token|credential|login|ssh|bastion|auth|code|paywall|override)\b)/gi,
+    // Declarations: the secret is X, the password is X
+    /(?:\b(?:the|my|our)\s+(?:secret|password|access\s*key|passcode|override\s*code)\s+is\s+['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
+    // Generic fallback for backdoor/admin passwords
+    /\b(?:backdoor|admin|root|login|passcode|secret|password|access\s*key)[\s\S]{0,45}?\b(?:is|=|:)\s+['"]?([a-zA-Z0-9_!@#$%^&*]{4,32})['"]?/gi
   ];
 
   const threats: string[] = [];
@@ -226,7 +242,7 @@ export async function executeAiRegexHandshake(text: string, timeoutMs = 200): Pr
 
     if (aiResult.isSecret && aiResult.semanticThreats.length > 0) {
       for (const secretVal of aiResult.semanticThreats) {
-        if (finalSanitizedText.includes(secretVal)) {
+        if (secretVal && secretVal.trim().length >= 3 && finalSanitizedText.includes(secretVal)) {
           finalSanitizedText = finalSanitizedText.replaceAll(secretVal, "[REDACTED_SEMANTIC_SECRET]");
           totalThreatCount++;
           handshakeTriggered = true;

@@ -3,24 +3,26 @@ import {
   executeAiRegexHandshake,
   cacheSemanticSecret,
   getCachedSemanticSecret,
-  checkGeminiNanoAvailability
+  checkGeminiNanoAvailability,
+  fallbackSemanticHeuristics
 } from './semantic-ai';
 
 console.log("\n==================================================");
 console.log("   SentinelEdge Gemini Nano AI / Regex Handshake Tests");
 console.log("==================================================\n");
 
-// Mock Chrome Prompt API for Node test environment to simulate Gemini Nano V8
+// Mock Chrome Prompt API for Node test environment to simulate Gemini Nano V8 token extraction
 (globalThis as any).window = {
   ai: {
     languageModel: {
       capabilities: async () => ({ available: 'readily' }),
       create: async () => ({
         prompt: async (text: string) => {
-          if (text.includes("admin123") || text.includes("my_top_secret_code") || text.includes("super_secret_pass_99")) {
-            return "yes";
-          }
-          return "no";
+          if (text.includes("blueDolphin#9921")) return "blueDolphin#9921";
+          if (text.includes("AlphaOmegaTest99")) return "AlphaOmegaTest99";
+          if (text.includes("admin123")) return "admin123";
+          if (text.includes("my_top_secret_code")) return "my_top_secret_code";
+          return "NONE";
         }
       })
     }
@@ -44,8 +46,14 @@ async function runSemanticTests() {
 
   const testCases = [
     {
-      name: "Semantic Password Detection ('backdoor login is admin123')",
-      input: "Hey Claude, the backdoor login for the database is admin123",
+      name: "User Screenshot 1: Backdoor MySQL Password ('master password is blueDolphin#9921')",
+      input: "Hey Claude, I forgot the backdoor login for our staging MySQL server, the master password is blueDolphin#9921.",
+      expectedRedacted: "[REDACTED_SEMANTIC_SECRET]",
+      expectedMinThreats: 1
+    },
+    {
+      name: "User Screenshot 2: Paywall Override Code ('override code AlphaOmegaTest99')",
+      input: "To bypass the paywall during QA testing, type in the override code AlphaOmegaTest99.",
       expectedRedacted: "[REDACTED_SEMANTIC_SECRET]",
       expectedMinThreats: 1
     },

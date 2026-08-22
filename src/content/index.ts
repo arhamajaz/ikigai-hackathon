@@ -10,7 +10,8 @@ import {
   executeAiRegexHandshake,
   scanSemanticSecrets,
   cacheSemanticSecret,
-  checkGeminiNanoAvailability
+  checkGeminiNanoAvailability,
+  getOrCreateAiSession
 } from '../core/semantic-ai';
 import { PolicyEngine } from '../core/policy-engine';
 
@@ -324,7 +325,7 @@ function handlePasteEvent(event: ClipboardEvent): void {
 }
 
 /**
- * DEBOUNCED BACKGROUND PRE-SCANNING AS USER TYPES (500ms)
+ * DEBOUNCED BACKGROUND PRE-SCANNING AS USER TYPES (300ms)
  */
 function handleInputDebounced(event: Event): void {
   const target = event.target as HTMLElement | null;
@@ -347,7 +348,7 @@ function handleInputDebounced(event: Event): void {
     }).catch(() => {
       // Ignore background pre-scan errors
     });
-  }, 500);
+  }, 300);
 }
 
 /**
@@ -447,6 +448,13 @@ function handlePreFlightClick(event: MouseEvent): void {
 
 // Attach event listeners safely in browser DOM environments
 if (typeof document !== 'undefined') {
+  // Pre-warm Gemini Nano session eagerly on page load for 0 cold-start latency
+  checkGeminiNanoAvailability().then((available) => {
+    if (available) {
+      getOrCreateAiSession().catch(() => {});
+    }
+  });
+
   document.addEventListener('paste', handlePasteEvent, true);
   document.addEventListener('input', handleInputDebounced, true);
   document.addEventListener('keydown', handlePreFlightKeydown, true);
