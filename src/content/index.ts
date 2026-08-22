@@ -1,18 +1,21 @@
 /**
  * SentinelEdge v2.1.0 Content Script
- * Hybrid DLP Masking Architecture: Instant Paste Interception + Just-In-Time Pre-Flight Typing Gate
+ * Hierarchical Cascading Interception Pipeline Architecture:
+ * Fast-Path Regex -> Semantic Trigger Guard -> Timed Local AI Fallback -> Policy Engine -> Release
  * Multi-Platform Adapters: ChatGPT, Claude, Gemini, Perplexity, Microsoft Copilot
- * Features:
- *  - 200ms Promise.race() hard latency budget timeout
- *  - Graceful Fallback for Unsupported Browsers (Firefox, Safari, Edge, Unsupported Chrome)
- *  - 500ms Debounced Background Pre-Scanning (Latency Hiding with 0.1ms Cache Lookup)
  */
 
-import { sanitizePayload } from '../core/dlp-engine';
-import { executeAiRegexHandshake, scanSemanticSecrets, cacheSemanticSecret } from '../core/semantic-ai';
+import { sanitizePayload, SanitizationResult } from '../core/dlp-engine';
+import {
+  executeAiRegexHandshake,
+  scanSemanticSecrets,
+  cacheSemanticSecret,
+  checkGeminiNanoAvailability
+} from '../core/semantic-ai';
+import { PolicyEngine } from '../core/policy-engine';
 
 console.log(
-  "%c[SentinelEdge v2.1.0]%c Universal DLP Firewall & JIT Pre-Flight Gatekeeper Active (Sub-2ms Engine).",
+  "%c[SentinelEdge v2.1.0]%c Hierarchical Cascading DLP Pipeline Active (Fast-Path -> AI Guard -> Policy Engine).",
   "color: #10B981; font-weight: bold; font-size: 13px;",
   "color: inherit;"
 );
@@ -54,6 +57,65 @@ const SUBMIT_BUTTON_SELECTORS = [
   '[role="button"][aria-label*="submit"]',
   'form button[type="submit"]'
 ].join(', ');
+
+/**
+ * Short-Circuit Logic: Determines if the input requires Gemini Nano AI semantic scanning.
+ * Bypasses AI scanning for code blocks, massive JSON/YAML payloads (>2,000 chars), or structural data to save compute cycles.
+ */
+export function needsSemanticCheck(text: string): boolean {
+  if (!text || text.trim().length < 10) return false;
+
+  // Short-circuit 1: Massive code/config payloads (>2000 chars) are handled by Fast-Path Regex
+  if (text.length > 2000) return false;
+
+  // Short-circuit 2: Code blocks, JSON, XML, or YAML structural blobs
+  const isCodeOrJson = /^\s*[\{\[\<\#]|\`\`\`|function\s+|class\s+|import\s+|export\s+/i.test(text);
+  if (isCodeOrJson) return false;
+
+  return true;
+}
+
+/**
+ * MASTER ORCHESTRATION FUNCTION: processSubmissionGate(rawText)
+ * Executes the 3-Step Hierarchical Cascading Pipeline:
+ *  1. Fast-Path Rule Engine (Synchronous Sub-2ms)
+ *  2. AI Availability & 200ms Timeout Fallback (Promise.race)
+ *  3. Policy Engine Audit & Release
+ */
+export async function processSubmissionGate(rawText: string): Promise<{ sanitizedText: string; totalThreats: number }> {
+  // Step 1: Rule Detection (Fast Path Regex Engine - Sub-2ms)
+  let { sanitizedText, threatCount } = sanitizePayload(rawText);
+
+  // Step 2: AI Availability & Timeout Fallback Guard
+  const isAiAvailable = await checkGeminiNanoAvailability();
+  if (isAiAvailable && needsSemanticCheck(sanitizedText)) {
+    try {
+      const aiTask = executeAiRegexHandshake(sanitizedText, 200);
+      const timeoutTask = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('AI_TIMEOUT')), 200)
+      );
+
+      // Race the AI scan against the 200ms hard latency clock
+      const handshakeRes = await Promise.race([aiTask, timeoutTask]);
+      sanitizedText = handshakeRes.sanitizedText;
+      threatCount += (handshakeRes.threatCount - threatCount > 0 ? handshakeRes.threatCount - threatCount : 0);
+    } catch (error: any) {
+      if (error && error.message === 'AI_TIMEOUT') {
+        console.warn('[SentinelEdge] Local AI timed out. Falling back to Rules Only.');
+      } else {
+        console.warn('[SentinelEdge] Local AI unavailable. Rules Only.');
+      }
+      // Preserve Fast-Path output from Step 1
+    }
+  }
+
+  // Step 3: Policy Engine Audit
+  const policyResult = PolicyEngine.evaluate(sanitizedText);
+  return {
+    sanitizedText: policyResult.finalText,
+    totalThreats: threatCount
+  };
+}
 
 /**
  * Displays a transient Neo-Brutalist toast banner on the webpage when secrets/PII are redacted.
@@ -222,7 +284,7 @@ function syncAndReplaceDOM(inputElem: HTMLElement, sanitizedText: string): void 
 }
 
 /**
- * STEP 1: INSTANT PASTE INTERCEPTION ('paste' event)
+ * INSTANT PASTE INTERCEPTION ('paste' event)
  * Sanitizes and masks clipboard text before it touches the DOM.
  */
 function handlePasteEvent(event: ClipboardEvent): void {
@@ -258,8 +320,7 @@ function handlePasteEvent(event: ClipboardEvent): void {
 }
 
 /**
- * STEP 3 (LATENCY HIDING): DEBOUNCED BACKGROUND PRE-SCANNING AS USER TYPES (500ms)
- * Silently scans text as user pauses typing; caches results so Pre-Flight gate lookup takes 0.1ms.
+ * DEBOUNCED BACKGROUND PRE-SCANNING AS USER TYPES (500ms)
  */
 function handleInputDebounced(event: Event): void {
   const target = event.target as HTMLElement | null;
@@ -270,7 +331,7 @@ function handleInputDebounced(event: Event): void {
   }
 
   const rawText = getRawText(target);
-  if (!rawText || rawText.trim().length < 5) return;
+  if (!rawText || !needsSemanticCheck(rawText)) return;
 
   debounceTimer = setTimeout(() => {
     scanSemanticSecrets(rawText).then((result) => {
@@ -280,13 +341,13 @@ function handleInputDebounced(event: Event): void {
         }
       }
     }).catch(() => {
-      // Ignore background AI pre-scan errors silently
+      // Ignore background pre-scan errors
     });
   }, 500);
 }
 
 /**
- * STEP 4: SANITIZATION, FRAMEWORK SYNC & RELEASE PIPELINE
+ * SANITIZATION, FRAMEWORK SYNC & RELEASE PIPELINE
  */
 async function executeSanitizationAndRelease(
   trigger: 'enter' | 'button',
@@ -296,14 +357,14 @@ async function executeSanitizationAndRelease(
   const rawText = getRawText(targetElem);
   if (!rawText || rawText.trim().length === 0) return;
 
-  // Execute AI / Regex Handshake with 200ms Promise.race() timeout budget & 0.1ms cache lookup
-  const { sanitizedText, threatCount } = await executeAiRegexHandshake(rawText, 200);
+  // Process prompt through 3-step Hierarchical Cascading Pipeline
+  const { sanitizedText, totalThreats } = await processSubmissionGate(rawText);
 
-  if (threatCount > 0 && sanitizedText !== rawText) {
+  if (totalThreats > 0 && sanitizedText !== rawText) {
     syncAndReplaceDOM(targetElem, sanitizedText);
-    recordTelemetry(threatCount, rawText.length, sanitizedText.length);
-    showInterceptionToast(threatCount);
-    console.warn(`[SentinelEdge v2.1.0] Pre-Flight Gate redacted ${threatCount} threat${threatCount > 1 ? 's' : ''} prior to submission.`);
+    recordTelemetry(totalThreats, rawText.length, sanitizedText.length);
+    showInterceptionToast(totalThreats);
+    console.warn(`[SentinelEdge v2.1.0] Pipeline redacted ${totalThreats} threat${totalThreats > 1 ? 's' : ''} prior to submission.`);
   }
 
   isBypassingGate = true;
@@ -337,7 +398,6 @@ async function executeSanitizationAndRelease(
 function handlePreFlightKeydown(event: KeyboardEvent): void {
   if (isBypassingGate) return;
 
-  // EXEMPT: Shift + Enter (multiline insertion) & IME composition
   if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
     return;
   }
@@ -393,7 +453,7 @@ document.addEventListener('keydown', handlePreFlightKeydown, true);
 // 4. Attach capturing click listener for Pre-Flight 'Send' / Edit-Submit Button Gate
 document.addEventListener('click', handlePreFlightClick, true);
 
-// 5. Dynamic SPA Lifecycle Engine: MutationObserver to re-verify dynamic DOM element creation
+// 5. Dynamic SPA Lifecycle Engine: MutationObserver
 const observer = new MutationObserver(() => {
   const prompt = getPromptElement();
   if (prompt && !prompt.dataset.sentinelActive) {
