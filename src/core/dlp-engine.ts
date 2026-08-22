@@ -25,14 +25,38 @@ export const DLP_RULES: readonly DlpRule[] = [
     needsContext: false
   },
   {
+    id: "ANTHROPIC_API_KEY",
+    pattern: /\bsk-ant-api03-[a-zA-Z0-9_-]{80,110}\b/g,
+    mask: "[REDACTED_ANTHROPIC_KEY]",
+    needsContext: false
+  },
+  {
     id: "OPENAI_API_KEY",
-    pattern: /\bsk-(?:proj-)?[a-zA-Z0-9_-]{20,}\b/g,
+    pattern: /\bsk-(?!ant-)(?:proj-)?[a-zA-Z0-9_-]{20,}\b/g,
     mask: "[REDACTED_OPENAI_KEY]",
     needsContext: false
   },
   {
+    id: "HUGGINGFACE_TOKEN",
+    pattern: /\bhf_[a-zA-Z0-9]{34,60}\b/g,
+    mask: "[REDACTED_HUGGINGFACE_TOKEN]",
+    needsContext: false
+  },
+  {
+    id: "REPLICATE_TOKEN",
+    pattern: /\br8_[a-zA-Z0-9]{32,60}\b/g,
+    mask: "[REDACTED_REPLICATE_TOKEN]",
+    needsContext: false
+  },
+  {
+    id: "DATABRICKS_TOKEN",
+    pattern: /\bdapi[a-f0-9]{32}\b/g,
+    mask: "[REDACTED_DATABRICKS_TOKEN]",
+    needsContext: false
+  },
+  {
     id: "GITHUB_TOKENS",
-    pattern: /\b(?:ghp|gho|ghu|ghs)_[0-9a-zA-Z]{36}\b|\bghr_[0-9a-zA-Z]{76}\b/g,
+    pattern: /\b(?:ghp|gho|ghu|ghs)_[0-9a-zA-Z]{36}\b|\bghr_[0-9a-zA-Z]{76}\b|\bgithub_pat_[0-9a-zA-Z]{22}_[0-9a-zA-Z]{59}\b/g,
     mask: "[REDACTED_GITHUB_TOKEN]",
     needsContext: false
   },
@@ -112,7 +136,7 @@ export const DLP_RULES: readonly DlpRule[] = [
   },
   {
     id: "GOOGLE_API_KEY",
-    pattern: /\bAIza[0-9A-Za-z\-_]{35}\b/g,
+    pattern: /AIza[0-9A-Za-z\-_]{35,45}/g,
     mask: "[REDACTED_GOOGLE_API_KEY]",
     needsContext: false
   },
@@ -243,6 +267,14 @@ export const DLP_RULES: readonly DlpRule[] = [
     needsContext: false
   },
 
+  // --- UNIVERSAL FALLBACK KEY-VALUE ASSIGNMENT REDACTION ENGINE ---
+  {
+    id: "GENERIC_KEY_VALUE_FALLBACK",
+    pattern: /(?:\b[a-zA-Z0-9_-]*(?:key|secret|token|password|passwd|pass|auth|credential)[a-zA-Z0-9_-]*\b[\s]*[:=][\s]*['"]?)([a-zA-Z0-9_.\/+=~-]{8,128})(?=['"]?(?:[\s,;}\n]|$))/gi,
+    mask: "[REDACTED_SENSITIVE_SECRET]",
+    needsContext: false
+  },
+
   // --- GENERIC SENSITIVE PII ---
   {
     id: "CREDIT_CARD",
@@ -333,6 +365,7 @@ export function sanitizePayload(rawText: string): SanitizationResult {
     interface MatchItem {
       index: number;
       length: number;
+      replacementText: string;
     }
     
     const validMatches: MatchItem[] = [];
@@ -342,16 +375,30 @@ export function sanitizePayload(rawText: string): SanitizationResult {
       if (rule.needsContext && !hasSensitiveContext(sanitizedText, match.index, rule.id)) {
         continue;
       }
-      validMatches.push({
-        index: match.index,
-        length: match[0].length
-      });
+
+      if (rule.id === "GENERIC_KEY_VALUE_FALLBACK" && match[1]) {
+        // Replace only the captured sensitive value, keeping assignment key prefix intact
+        const fullMatchStr = match[0];
+        const secretVal = match[1];
+        const valIndex = match.index + fullMatchStr.lastIndexOf(secretVal);
+        validMatches.push({
+          index: valIndex,
+          length: secretVal.length,
+          replacementText: rule.mask
+        });
+      } else {
+        validMatches.push({
+          index: match.index,
+          length: match[0].length,
+          replacementText: rule.mask
+        });
+      }
     }
 
     // Apply replacements from right to left (highest match index to lowest match index)
     for (let i = validMatches.length - 1; i >= 0; i--) {
       const m = validMatches[i];
-      sanitizedText = sanitizedText.slice(0, m.index) + rule.mask + sanitizedText.slice(m.index + m.length);
+      sanitizedText = sanitizedText.slice(0, m.index) + m.replacementText + sanitizedText.slice(m.index + m.length);
       threatCount++;
     }
   }
