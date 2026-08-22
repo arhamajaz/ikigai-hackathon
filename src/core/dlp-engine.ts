@@ -94,7 +94,7 @@ export const DLP_RULES: readonly DlpRule[] = [
   },
   {
     id: "SLACK_TOKEN",
-    pattern: /\b(?:xox[baprs]-[0-9a-zA-Z]{10,48})\b/g,
+    pattern: /\bxox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,32}\b/g,
     mask: "[REDACTED_SLACK_TOKEN]",
     needsContext: false
   },
@@ -206,7 +206,7 @@ export const DLP_RULES: readonly DlpRule[] = [
   },
   {
     id: "AADHAAR_CARD",
-    pattern: /\b[2-9]\d{3}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}\b/g,
+    pattern: /\b[0-9]{4}[\s-]?[0-9]{4}[\s-]?[0-9]{4}\b/g,
     mask: "[REDACTED_AADHAAR]",
     needsContext: false
   },
