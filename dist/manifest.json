@@ -28,7 +28,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-axg5lMSg.js"
+        "assets/index.ts-loader-C8FBhT_6.js"
       ],
       "matches": [
         "https://chatgpt.com/*",
@@ -58,7 +58,7 @@
         "https://www.perplexity.ai/*"
       ],
       "resources": [
-        "assets/index.ts-CYyiH9UM.js"
+        "assets/index.ts-TSaay86b.js"
       ],
       "use_dynamic_url": false
     }

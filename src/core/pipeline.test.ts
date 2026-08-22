@@ -1,21 +1,20 @@
 import { processSubmissionGate, needsSemanticCheck } from '../content/index';
-import { cacheSemanticSecret } from './semantic-ai';
+import { cacheSemanticSecret, resetAiSession } from './semantic-ai';
 
 console.log("\n==================================================");
 console.log("   SentinelEdge v2.2 Master Pipeline Integration Tests");
 console.log("==================================================\n");
 
-// Mock Chrome Prompt API for Node test environment to simulate Gemini Nano V8
+// Mock Chrome Prompt API for Node test environment to simulate Gemini Nano V8 JSON token extraction
 (globalThis as any).window = {
   ai: {
     languageModel: {
       capabilities: async () => ({ available: 'readily' }),
       create: async () => ({
         prompt: async (text: string) => {
-          if (text.includes("admin123") || text.includes("my_top_secret_code")) {
-            return "yes";
-          }
-          return "no";
+          if (text.includes("admin123")) return JSON.stringify({ found: true, secret: "admin123" });
+          if (text.includes("admin_root_secret_99")) return JSON.stringify({ found: true, secret: "admin_root_secret_99" });
+          return JSON.stringify({ found: false, secret: "" });
         }
       })
     }
@@ -77,9 +76,9 @@ async function runPipelineMasterTests() {
 
   // --- 3. TIMED LOCAL AI FALLBACK (200MS TIMEOUT BUDGET) ---
   console.log("[PIPELINE STEP 3] Timed Local AI Fallback (200ms Timeout Enforcement)...");
-  // Temporarily override window.ai prompt to simulate slow response (>300ms)
+  resetAiSession();
   (globalThis as any).window.ai.languageModel.create = async () => ({
-    prompt: () => new Promise(resolve => setTimeout(() => resolve("yes"), 350))
+    prompt: () => new Promise(resolve => setTimeout(() => resolve("slow"), 350))
   });
 
   const slowPrompt = "Hey Claude, the backdoor login for the database is admin123";
@@ -98,8 +97,13 @@ async function runPipelineMasterTests() {
   }
 
   // Restore fast mock prompt
+  resetAiSession();
   (globalThis as any).window.ai.languageModel.create = async () => ({
-    prompt: async (text: string) => text.includes("admin123") ? "yes" : "no"
+    prompt: async (text: string) => {
+      if (text.includes("admin123")) return JSON.stringify({ found: true, secret: "admin123" });
+      if (text.includes("admin_root_secret_99")) return JSON.stringify({ found: true, secret: "admin_root_secret_99" });
+      return JSON.stringify({ found: false, secret: "" });
+    }
   });
 
   // --- 4. DEBOUNCED PRE-SCAN CACHE LOOKUP (<0.1MS) ---
@@ -116,7 +120,7 @@ async function runPipelineMasterTests() {
     console.log(`  Sanitized Output : "${res4.sanitizedText}"\n`);
     passed++;
   } else {
-    console.error(`✗ [FAIL] Cache lookup failed (${dur4.toFixed(3)} ms)\n`);
+    console.error(`✗ [FAIL] Cache lookup failed (${dur4.toFixed(3)} ms, output: "${res4.sanitizedText}")\n`);
     failed++;
   }
 

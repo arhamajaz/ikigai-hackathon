@@ -171,20 +171,6 @@ const testCases = [
     expectedThreats: 1
   },
 
-  // --- PASSPHRASE & SSH PROSE REDACTION ---
-  {
-    name: "SSH Bastion Passphrase Prose Test",
-    input: "When logging into the production bastion host via SSH, enter winter-forest-coffee-77 whenever prompted for the passphrase.",
-    expectedMask: "[REDACTED_PASSPHRASE]",
-    expectedThreats: 1
-  },
-  {
-    name: "Combined Indian Mobile + SSH Passphrase Test",
-    input: "+91 8871211073 When logging into the production bastion host via SSH, enter winter-forest-coffee-77 whenever prompted for the passphrase.",
-    expectedMask: "[REDACTED_PASSPHRASE]",
-    expectedThreats: 2
-  },
-
   // --- SPECIFIC PIN & CONTEXTUAL RULES ---
   {
     name: "Password Assignment",

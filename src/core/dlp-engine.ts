@@ -223,20 +223,6 @@ export const DLP_RULES: readonly DlpRule[] = [
     needsContext: false
   },
 
-  // --- PASSPHRASE & CREDENTIAL PROSE REDACTION ENGINE ---
-  {
-    id: "PASSPHRASE_AFTER_ACTION_VERB",
-    pattern: /(?:\b(?:enter|use|type|input)\s+['"]?)([a-zA-Z0-9_-]{4,64})(?=['"]?\s+(?:whenever|when|for|as|if|to|in|into|on|at|with)\b[\s\S]{0,40}?\b(?:passphrase|password|secret|key|token|credential|login|ssh|bastion|auth)\b)/gi,
-    mask: "[REDACTED_PASSPHRASE]",
-    needsContext: false
-  },
-  {
-    id: "PASSPHRASE_PROSE_DECLARATION",
-    pattern: /(?:\b(?:passphrase|password|secret[_\s]*key|ssh[_\s]*key|bastion[_\s]*key|auth[_\s]*key)\s+(?:is|:|=)\s+['"]?)([a-zA-Z0-9_-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
-    mask: "[REDACTED_PASSPHRASE]",
-    needsContext: false
-  },
-
   // --- SPECIFIC PIN & FINANCIAL RULES ---
   {
     id: "UPI_PIN",
@@ -390,7 +376,7 @@ export function sanitizePayload(rawText: string): SanitizationResult {
         continue;
       }
 
-      if ((rule.id === "GENERIC_KEY_VALUE_FALLBACK" || rule.id === "PASSPHRASE_AFTER_ACTION_VERB" || rule.id === "PASSPHRASE_PROSE_DECLARATION") && match[1]) {
+      if (rule.id === "GENERIC_KEY_VALUE_FALLBACK" && match[1]) {
         // Replace only the captured sensitive value, keeping assignment key or prose prefix intact
         const fullMatchStr = match[0];
         const secretVal = match[1];

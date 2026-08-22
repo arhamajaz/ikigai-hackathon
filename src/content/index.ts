@@ -91,7 +91,7 @@ export async function processSubmissionGate(rawText: string): Promise<{ sanitize
   const isAiAvailable = await checkGeminiNanoAvailability();
   if (isAiAvailable && needsSemanticCheck(sanitizedText)) {
     try {
-      const aiTask = executeAiRegexHandshake(sanitizedText, 200);
+      const aiTask = executeAiRegexHandshake(sanitizedText);
       const timeoutTask = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('AI_TIMEOUT')), 200)
       );
