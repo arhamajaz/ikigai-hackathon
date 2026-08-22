@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SentinelEdge - Zero-Latency DLP Firewall",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "description": "Zero-latency, 100% client-side privacy firewall for Generative AI (ChatGPT, Claude, Gemini, Perplexity, Copilot).",
   "permissions": [
     "clipboardRead",
@@ -23,7 +23,7 @@
   },
   "action": {
     "default_popup": "src/popup/index.html",
-    "default_title": "SentinelEdge DLP v2.2.0"
+    "default_title": "SentinelEdge DLP v3.0.0"
   },
   "content_scripts": [
     {
@@ -33,15 +33,22 @@
         "https://claude.ai/*",
         "https://gemini.google.com/*",
         "https://www.perplexity.ai/*",
-        "https://perplexity.ai/*",
-        "https://copilot.microsoft.com/*",
-        "https://*.bing.com/chat*",
-        "https://www.bing.com/search*"
+        "https://copilot.microsoft.com/*"
       ],
       "js": [
         "src/content/index.ts"
       ],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

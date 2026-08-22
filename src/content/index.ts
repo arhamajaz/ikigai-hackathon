@@ -1,5 +1,5 @@
 /**
- * SentinelEdge v2.2.0 Content Script
+ * SentinelEdge v3.0.0 Content Script
  * Hierarchical Cascading Interception Pipeline Architecture:
  * Fast-Path Regex -> Semantic Trigger Guard -> Timed Local AI Fallback -> Policy Engine -> Release
  * Multi-Platform Adapters: ChatGPT, Claude, Gemini, Perplexity, Microsoft Copilot
@@ -11,12 +11,13 @@ import {
   scanSemanticSecrets,
   cacheSemanticSecret,
   checkGeminiNanoAvailability,
-  getOrCreateAiSession
+  getOrCreateAiSession,
+  shouldTriggerSemanticCheck
 } from '../core/semantic-ai';
 import { PolicyEngine } from '../core/policy-engine';
 
 console.log(
-  "%c[SentinelEdge v2.2.0]%c Hierarchical Cascading DLP Pipeline Active (Fast-Path -> AI Guard -> Policy Engine).",
+  "%c[SentinelEdge v3.0.0]%c Hierarchical Cascading DLP Pipeline Active (Fast-Path -> AI Guard -> Policy Engine).",
   "color: #10B981; font-weight: bold; font-size: 13px;",
   "color: inherit;"
 );
@@ -66,10 +67,13 @@ const SUBMIT_BUTTON_SELECTORS = [
 export function needsSemanticCheck(text: string): boolean {
   if (!text || text.trim().length < 10) return false;
 
-  // Short-circuit 1: Massive code/config payloads (>2000 chars) are handled by Fast-Path Regex
+  // Short-circuit 1: Context Trigger Guard check
+  if (!shouldTriggerSemanticCheck(text)) return false;
+
+  // Short-circuit 2: Massive code/config payloads (>2000 chars) are handled by Fast-Path Regex
   if (text.length > 2000) return false;
 
-  // Short-circuit 2: Code blocks, JSON, XML, or YAML structural blobs
+  // Short-circuit 3: Code blocks, JSON, XML, or YAML structural blobs
   const isCodeOrJson = /^\s*[\{\[\<\#]|\`\`\`|function\s+|class\s+|import\s+|export\s+/i.test(text);
   if (isCodeOrJson) return false;
 
@@ -100,8 +104,8 @@ export async function processSubmissionGate(rawText: string): Promise<{ sanitize
       const handshakeRes = await Promise.race([aiTask, timeoutTask]);
       sanitizedText = handshakeRes.sanitizedText;
       threatCount += (handshakeRes.threatCount - threatCount > 0 ? handshakeRes.threatCount - threatCount : 0);
-    } catch (error: any) {
-      if (error && error.message === 'AI_TIMEOUT') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message === 'AI_TIMEOUT') {
         console.warn('[SentinelEdge] Local AI timed out. Falling back to Rules Only.');
       } else {
         console.warn('[SentinelEdge] Local AI unavailable. Rules Only.');
@@ -152,7 +156,7 @@ function showInterceptionToast(threatCount: number): void {
 
     toast.innerHTML = `
       <span style="font-size: 18px;">🛡️</span>
-      <span>SentinelEdge DLP v2.2: Redacted <strong>${threatCount}</strong> sensitive threat${threatCount > 1 ? 's' : ''}!</span>
+      <span>SentinelEdge DLP v3.0: Redacted <strong>${threatCount}</strong> sensitive threat${threatCount > 1 ? 's' : ''}!</span>
     `;
 
     document.body.appendChild(toast);
@@ -219,16 +223,15 @@ function getRawText(el: HTMLElement): string {
  */
 function recordTelemetry(threatCount: number, originalLength: number, sanitizedLength: number): void {
   try {
+    const nav = typeof window !== 'undefined' ? (window as unknown as { browser?: { storage?: { local: unknown } } }) : null;
     const storageApi = (typeof chrome !== 'undefined' && chrome.storage)
       ? chrome.storage.local
-      : (typeof (window as any).browser !== 'undefined' && (window as any).browser?.storage)
-        ? (window as any).browser.storage.local
-        : null;
+      : nav?.browser?.storage?.local || null;
 
-    if (storageApi) {
-      storageApi.get(['totalThreatsBlocked', 'incidentsLog'], (data: any) => {
-        const currentTotal = (data.totalThreatsBlocked || 0) + threatCount;
-        const currentLog = data.incidentsLog || [];
+    if (storageApi && typeof (storageApi as { get?: Function }).get === 'function') {
+      (storageApi as { get: (keys: string[], cb: (data: Record<string, unknown>) => void) => void }).get(['totalThreatsBlocked', 'incidentsLog'], (data: Record<string, unknown>) => {
+        const currentTotal = (Number(data.totalThreatsBlocked) || 0) + threatCount;
+        const currentLog = Array.isArray(data.incidentsLog) ? data.incidentsLog : [];
         
         const newIncident = {
           timestamp: new Date().toISOString(),
@@ -240,7 +243,7 @@ function recordTelemetry(threatCount: number, originalLength: number, sanitizedL
 
         const updatedLog = [newIncident, ...currentLog].slice(0, 100);
 
-        storageApi.set({
+        (storageApi as { set: (obj: Record<string, unknown>) => void }).set({
           totalThreatsBlocked: currentTotal,
           incidentsLog: updatedLog
         });
@@ -320,7 +323,7 @@ function handlePasteEvent(event: ClipboardEvent): void {
 
     recordTelemetry(threatCount, rawClipboard.length, sanitizedText.length);
     showInterceptionToast(threatCount);
-    console.warn(`[SentinelEdge v2.2.0] Instant Paste Intercepted: Redacted ${threatCount} threat${threatCount > 1 ? 's' : ''}.`);
+    console.warn(`[SentinelEdge v3.0.0] Instant Paste Intercepted: Redacted ${threatCount} threat${threatCount > 1 ? 's' : ''}.`);
   }
 }
 
@@ -369,7 +372,7 @@ async function executeSanitizationAndRelease(
     syncAndReplaceDOM(targetElem, sanitizedText);
     recordTelemetry(totalThreats, rawText.length, sanitizedText.length);
     showInterceptionToast(totalThreats);
-    console.warn(`[SentinelEdge v2.2.0] Pipeline redacted ${totalThreats} threat${totalThreats > 1 ? 's' : ''} prior to submission.`);
+    console.warn(`[SentinelEdge v3.0.0] Pipeline redacted ${totalThreats} threat${totalThreats > 1 ? 's' : ''} prior to submission.`);
   }
 
   isBypassingGate = true;

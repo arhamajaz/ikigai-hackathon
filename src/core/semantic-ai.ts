@@ -1,5 +1,5 @@
 /**
- * SentinelEdge v2.2 - Two-Tier Local Semantic AI DLP Engine
+ * SentinelEdge v3.0 - Two-Tier Local Semantic AI DLP Engine
  * Integrates Chrome's Built-in Prompt API (window.ai.languageModel) + Local Semantic Heuristics
  * 100% Air-Gapped On-Device Processing (0 Cloud Calls)
  */
@@ -46,12 +46,12 @@ export function resetAiSession(): void {
 
 const SEMANTIC_SYSTEM_PROMPT = `
 You are an on-device Data Loss Prevention (DLP) engine.
-Analyze the user's text for sensitive secrets disclosed in natural language context (e.g., passphrases, bypass tokens, override codes, passwords, private keys).
+Analyze the user's text for sensitive credentials or secrets disclosed in natural language context (e.g. passphrases, override codes, passwords, auth tokens, security answers, master keys).
 
 Rules:
-1. If a contextual secret is present, output ONLY a JSON object: {"found": true, "secret": "<EXACT_SECRET_SUBSTRING>"}
-2. If NO secret is present, output ONLY: {"found": false, "secret": ""}
-3. Do not include explanation, markdown formatting, or preamble.
+1. If a secret or credential value is present in natural language prose (e.g., 'the override code is Omega99', 'my passphrase is correct horse battery staple', 'security answer is fluffy_dog_123'), output ONLY a JSON object: {"found": true, "secret": "<EXACT_SECRET_SUBSTRING>"}.
+2. If NO secret is present or if the text is a general technical question without disclosing actual credentials (e.g. 'How do I reset a password in Linux?'), output ONLY: {"found": false, "secret": ""}.
+3. Do not include markdown code fences, explanations, or preamble.
 `.trim();
 
 /**
@@ -73,12 +73,14 @@ export function cacheSemanticSecret(text: string, secretPhrase: string): void {
 }
 
 /**
- * Context Trigger Gate: Fast regex scan for contextual anchors.
+ * Context Trigger Guard: Fast regex scan for contextual anchors.
  * Returns true if text contains natural language secret triggers.
  */
 export function hasSemanticTriggers(text: string): boolean {
-  return /\b(?:passphrase|password|passcode|override\s+code|bypass|secret\s+token|secret\s+key|backdoor|master\s+key|master\s+password|login\s+is|card\s+pin)\b/i.test(text);
+  return /\b(?:passphrase|password|passcode|override\s+code|bypass|secret\s+token|secret\s+key|backdoor|master\s+key|master\s+password|login\s+is|auth\s+token|security\s+answer|card\s+pin)\b/i.test(text);
 }
+
+export const shouldTriggerSemanticCheck = hasSemanticTriggers;
 
 /**
  * Graceful Fallback & Environment Check
@@ -172,10 +174,21 @@ export async function scanForSemanticSecrets(text: string): Promise<string[]> {
  * Lightweight rule-based semantic extractor for local test suites and unsupported environments.
  */
 export function fallbackSemanticHeuristicsList(text: string): string[] {
+  // Case B: Safe Contexts (General technical questions asking 'how to' or 'what is' without value assignments)
+  const isSafeContextQuestion = /\b(?:how\s+(?:to|can\s+i|do\s+i|should\s+i)|difference\s+between|what\s+is|explain|tutorial|documentation|syntax)\b/i.test(text) &&
+    !/\b(?:is|=|:)\s+['"]?[a-zA-Z0-9_!@#$%^&*-]{3,}/i.test(text);
+  if (isSafeContextQuestion) {
+    return [];
+  }
+
   const semanticPatterns = [
+    // Multi-Word Passphrase (e.g. 'my passphrase is correct horse battery staple')
+    /(?:\b(?:my|our|the)\s+(?:passphrase|secret\s+passphrase)\s+is\s+['"]?)([a-zA-Z0-9_\s-]{8,80}?)(?=['"]?(?:[\s,;.]|$|\b(?:for|to|whenever|when|with)\b))/gi,
+    // Security answer (e.g. 'security answer is fluffy_dog_123')
+    /(?:\b(?:security\s+answer|security\s+response)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{3,64})(?=['"]?(?:[\s,;.]|$))/gi,
     // Override code, bypass code, paywall code, QA code
     /(?:\b(?:override\s+code|bypass\s+code|paywall\s+code|access\s+code|testing\s+code|secret\s+code)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
-    // Master password, backdoor login, database password, secret token, passcode
+    // Master password, backdoor login, database password, secret token, passcode, auth token
     /(?:\b(?:master\s+password|backdoor\s+login|staging\s+password|database\s+password|admin\s+password|root\s+password|root\s+passcode|passcode|secret\s+key|access\s+key|auth\s+token|secret\s+token)\s+(?:is|=|:)?\s*['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?(?:[\s,;.]|$))/gi,
     // Action verbs followed by tokens (type in X, enter X, use X)
     /(?:\b(?:type\s+in|enter|use|input)\s+['"]?)([a-zA-Z0-9_!@#$%^&*-]{4,64})(?=['"]?\s+(?:whenever|when|for|as|if|to|in|into|on|at|with)\b[\s\S]{0,40}?\b(?:passphrase|password|secret|key|token|credential|login|ssh|bastion|auth|code|paywall|override)\b)/gi,
@@ -191,7 +204,10 @@ export function fallbackSemanticHeuristicsList(text: string): string[] {
     let match: RegExpExecArray | null;
     while ((match = pat.exec(text)) !== null) {
       if (match[1] && text.includes(match[1])) {
-        secrets.push(match[1]);
+        const rawSecret = match[1].trim();
+        if (rawSecret.length >= 3) {
+          secrets.push(rawSecret);
+        }
       }
     }
   }
@@ -221,7 +237,7 @@ export async function executeAiRegexHandshake(rawText: string): Promise<Handshak
   let { sanitizedText, threatCount } = sanitizePayload(rawText);
 
   // 2. Fast-Exit if no contextual semantic triggers are found
-  if (!hasSemanticTriggers(sanitizedText)) {
+  if (!shouldTriggerSemanticCheck(sanitizedText)) {
     return { sanitizedText, threatCount };
   }
 

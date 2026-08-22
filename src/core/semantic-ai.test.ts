@@ -15,6 +15,8 @@ console.log("==================================================\n");
           if (text.includes("winter-forest-coffee-77")) return JSON.stringify({ found: true, secret: "winter-forest-coffee-77" });
           if (text.includes("AlphaOmegaTest99")) return JSON.stringify({ found: true, secret: "AlphaOmegaTest99" });
           if (text.includes("PineappleJelly2024")) return JSON.stringify({ found: true, secret: "PineappleJelly2024" });
+          if (text.includes("correct horse battery staple")) return JSON.stringify({ found: true, secret: "correct horse battery staple" });
+          if (text.includes("fluffy_dog_123")) return JSON.stringify({ found: true, secret: "fluffy_dog_123" });
           return JSON.stringify({ found: false, secret: "" });
         }
       })
@@ -91,6 +93,26 @@ async function runDualEngineTests() {
       name: "Clean Input Bypass (Zero Latency Overhead)",
       input: "Can you explain the difference between a stack and a queue in Java?",
       check: (res: any) => res.sanitizedText === "Can you explain the difference between a stack and a queue in Java?" && res.threatCount === 0
+    },
+
+    // --- v3.0 HARDENED AI EDGE CASES ---
+    {
+      id: "TC-11",
+      name: "Multi-Word Passphrase Redaction",
+      input: "My passphrase is correct horse battery staple for authentication.",
+      check: (res: any) => res.sanitizedText.includes('[REDACTED_SEMANTIC_SECRET]')
+    },
+    {
+      id: "TC-12",
+      name: "Security Answer Redaction",
+      input: "My security answer is fluffy_dog_123 for account recovery.",
+      check: (res: any) => res.sanitizedText.includes('[REDACTED_SEMANTIC_SECRET]')
+    },
+    {
+      id: "TC-13",
+      name: "Safe Technical Question (Zero False Positive)",
+      input: "How do I reset a password in Linux?",
+      check: (res: any) => res.sanitizedText === "How do I reset a password in Linux?" && res.threatCount === 0
     }
   ];
 

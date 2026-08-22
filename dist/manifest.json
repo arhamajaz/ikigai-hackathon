@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SentinelEdge - Zero-Latency DLP Firewall",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "description": "Zero-latency, 100% client-side privacy firewall for Generative AI (ChatGPT, Claude, Gemini, Perplexity, Copilot).",
   "permissions": [
     "clipboardRead",
@@ -23,12 +23,12 @@
   },
   "action": {
     "default_popup": "src/popup/index.html",
-    "default_title": "SentinelEdge DLP v2.2.0"
+    "default_title": "SentinelEdge DLP v3.0.0"
   },
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-C8FBhT_6.js"
+        "assets/index.ts-loader-BuFSfvqF.js"
       ],
       "matches": [
         "https://chatgpt.com/*",
@@ -36,10 +36,7 @@
         "https://claude.ai/*",
         "https://gemini.google.com/*",
         "https://www.perplexity.ai/*",
-        "https://perplexity.ai/*",
-        "https://copilot.microsoft.com/*",
-        "https://*.bing.com/chat*",
-        "https://www.bing.com/search*"
+        "https://copilot.microsoft.com/*"
       ],
       "run_at": "document_idle"
     }
@@ -47,18 +44,24 @@
   "web_accessible_resources": [
     {
       "matches": [
-        "https://*.bing.com/*",
+        "<all_urls>"
+      ],
+      "resources": [
+        "assets/*"
+      ],
+      "use_dynamic_url": false
+    },
+    {
+      "matches": [
         "https://chat.openai.com/*",
         "https://chatgpt.com/*",
         "https://claude.ai/*",
         "https://copilot.microsoft.com/*",
         "https://gemini.google.com/*",
-        "https://perplexity.ai/*",
-        "https://www.bing.com/*",
         "https://www.perplexity.ai/*"
       ],
       "resources": [
-        "assets/index.ts-TSaay86b.js"
+        "assets/index.ts-yBmdK7lT.js"
       ],
       "use_dynamic_url": false
     }
