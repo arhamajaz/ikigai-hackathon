@@ -1,9 +1,15 @@
-# 🛡️ SentinelEdge v3.0 — Client-Side DLP WebExtension
+**Sustainable Multimodal Transportation & Mobility Platform**
 
-**SentinelEdge** is a 100% client-side, zero-backend WebExtension designed to prevent accidental sensitive data leaks (API keys, Cloud secrets, Financial credentials, PII) when interacting with Generative AI platforms like **ChatGPT**, **Claude.ai**, **Google Gemini**, **Perplexity**, and **Microsoft Copilot**.
+> *IKIGAI 2026 — Problem IHSA5: Sustainable Transportation*
 
 - 🌐 **Live Distribution Website**: [https://ikigai-hackathon-frontend.vercel.app/](https://ikigai-hackathon-frontend.vercel.app/)
 - 🖥️ **Frontend Source Code**: [https://github.com/arhamajaz/ikigai-hackathon-frontend.git](https://github.com/arhamajaz/ikigai-hackathon-frontend.git)
+
+---
+
+# 🛡️ SentinelEdge v3.0 — Client-Side DLP WebExtension
+
+**SentinelEdge** is a 100% client-side, zero-backend WebExtension designed to prevent accidental sensitive data leaks (API keys, Cloud secrets, Financial credentials, PII) when interacting with Generative AI platforms like **ChatGPT**, **Claude.ai**, **Google Gemini**, **Perplexity**, and **Microsoft Copilot**.
 
 ---
 
@@ -43,16 +49,42 @@ Naive DLP engines generate excessive false positives by redacting standard 4-dig
 ## 🏗️ Architecture Diagram
 
 ```mermaid
-flowchart LR
-    User[User Input / Paste] --> ContentScript[Content Script Pre-Flight Hooks]
-    ContentScript --> RegexEngine[Fast-Path DLP Engine]
-    RegexEngine --> ContextFilter{Context Validation}
-    ContextFilter -->|Regex Match| PolicyEngine[Policy Engine Audit]
-    ContextFilter -->|Semantic Trigger| GeminiNano[Chrome Built-in AI / Gemini Nano]
-    GeminiNano -->|Semantic Redaction| PolicyEngine
-    PolicyEngine --> DOMSync[Host Framework DOM Sync]
-    DOMSync --> Storage[Local Extension Storage & HUD]
-    DOMSync --> Output[Sanitized Prompt to LLM]
+flowchart TD
+    subgraph HostWebpage["Host Webpage (ChatGPT / Claude / Gemini)"]
+        A["User Input / Paste / Enter Key / Send Click"]
+    end
+
+    subgraph BrowserExtension["SentinelEdge Browser Extension Runtime (100% Client-Side)"]
+        B["Pre-Flight Submission Gate (index.ts)"]
+        C["Fast-Path Regex Engine (dlp-engine.ts)"]
+        D{"Context Match? (hasSensitiveContext)"}
+        E["Mask Structured Credentials ([REDACTED_*])"]
+        F{"Semantic Trigger Guard (semantic-ai.ts)"}
+        G["On-Device Chrome Prompt API (Gemini Nano)"]
+        H["200ms Timeout Race Clock"]
+        I["Mask Natural Language Passphrases"]
+        J["Policy Audit Engine (policy-engine.ts)"]
+        K[("Local Storage (chrome.storage.local)")]
+        L["Framework DOM Sync & Caret Restoration (FrameworkSync.ts)"]
+        M["Engage Bypass Lock & Release Sanitized Payload"]
+    end
+
+    A -->|"Intercept Event (preventDefault)"| B
+    B --> C
+    C --> D
+    D -->|"Rule Matched"| E
+    D -->|"No Match / Clean"| F
+    E --> F
+    F -->|"Triggered"| G
+    G -->|"Race Condition"| H
+    G -->|"Secrets Found"| I
+    H -->|"Timeout / Fallback"| J
+    I --> J
+    F -->|"No Trigger"| J
+    J -->|"Audit Passed"| K
+    J --> L
+    L --> M
+    M -->|"Clean Prompt Payload"| HostWebpage
 ```
 
 ---
